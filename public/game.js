@@ -3,10 +3,22 @@ const VIEW_W=240, VIEW_H=320, R=20, DT=1/120;
 const tuning={gravity:400,acceleration:500,runSpeed:280,airControl:1.5,jump:288,friction:.60,ricochet:.10};
 const $=id=>document.getElementById(id);
 const canvas=$("game"), ctx=canvas.getContext("2d",{alpha:false});
-const stage=await fetch("./level.json").then(response=>{
- if(!response.ok)throw new Error("Could not load the Limbo level.");
+const inLust=new URLSearchParams(window.location?.search).get("circle")==="2";
+const stage=await fetch(inLust?"./lust.json":"./level.json").then(response=>{
+ if(!response.ok)throw new Error("Could not load the circle.");
  return response.json();
 });
+const chapterTitle=stage.title??"Limbo";
+const circleLabel=(inLust?"II":"I")+" · "+chapterTitle;
+document.title="Bounce Inferno · "+chapterTitle;
+const winds=stage.wind??[];
+function rememberRose(value){
+ try{
+  if(value!==undefined)sessionStorage.setItem("bounce-inferno-rose",value?"1":"0");
+  return sessionStorage.getItem("bounce-inferno-rose")==="1";
+ }catch{return false;}
+}
+const roseMemory=inLust&&rememberRose();
 const artFiles={
  ball:"ball",egg:"egg",springPlant:"spring",castleArch:"arch",lever:"lever",rose:"rose",
  limboFire:"fire",poet:"poet",homer:"poet",crystals:"crystals",exit:"arch",
@@ -40,7 +52,7 @@ const staticEdges=stage.ground.filter(g=>!g.oneWay).flatMap(g=>polygonEdges(g.po
 const footholds=stage.ground.filter(g=>g.oneWay).flatMap(g=>g.points.slice(0,g.rim-1).map(([x,y],i)=>{
  const [right,endY]=g.points[i+1],span=right-x,rise=endY-y;
  const length=Math.hypot(span,rise);
- return {x,y,right,slope:rise/span,nx:rise/length,ny:-span/length,offset:R*length/span};
+ return {id:g.id,x,y,right,slope:rise/span,nx:rise/length,ny:-span/length,offset:R*length/span};
 }));
 const eastBank=stage.ground.find(shape=>shape.id==="hub-east");
 function surfaceY(shape,x){
@@ -54,21 +66,35 @@ function surfaceY(shape,x){
  return shape.points[shape.rim-1][1];
 }
 const useTargets=[
- ...stage.poets.map(poet=>({
-  kind:"poet",id:poet.name,x:poet.x,y:poet.y-R,promptY:poet.y-poet.height-9,
-  label:"Talk to "+poet.name,range:43,lines:poet.lines
+ ...stage.poets.filter(poet=>poet.lines.length).map(poet=>({
+  kind:"poet",id:poet.id??poet.name,x:poet.x,y:poet.y-R,promptY:poet.y-poet.height-9,
+  label:poet.label??"Talk to "+poet.name,range:43,lines:poet.lines
  })),
- ...stage.switches.map(mark=>({...mark,kind:"lever",promptY:mark.y-20,label:"Pull "+mark.label.toLowerCase(),range:41})),
- {kind:"relief",x:stage.cave.relief[0],y:stage.cave.relief[1]+16,
-  promptY:stage.cave.relief[1]-52,label:"Read the relief",range:46,lines:stage.cave.dialogue},
- {kind:"gate",x:stage.port.x,y:stage.port.bottom-R,promptY:stage.port.bottom-64,label:"Read the gate",range:48},
+ ...(stage.switches??[]).map(mark=>({...mark,kind:"lever",promptY:mark.y-20,label:"Pull "+mark.label.toLowerCase(),range:41})),
  {kind:"exit",x:stage.exit[0],y:stage.exit[1],promptY:stage.exit[1]-54,label:"Descend",range:37}
 ];
+if(!inLust){
+ useTargets.push(
+  {kind:"relief",x:stage.cave.relief[0],y:stage.cave.relief[1]+16,
+   promptY:stage.cave.relief[1]-52,label:"Read the relief",range:46,lines:stage.cave.dialogue},
+  {kind:"gate",x:stage.port.x,y:stage.port.bottom-R,promptY:stage.port.bottom-64,label:"Read the gate",range:48}
+ );
+}
+if(inLust){
+ const [x,y]=stage.exit;
+ useTargets.push({kind:"threshold",x,y,promptY:y-54,label:"Listen at the threshold",range:37,
+  lines:[["Threshold","Two figures wait in the sheltered hollow above."]]});
+}
+if(roseMemory){
+ const [x,y]=stage.roseEcho;
+ useTargets.push({kind:"memory",x,y,promptY:y-32,range:46,label:"Remember the rose",
+  lines:[["Memory","A place was left for you beside the poets. The warmth of that place returns here."]]});
+}
 let ball,cam,eggs,fx,progress,cave,phase,now,sceneTitle,checkpoint,stepsOnWater,pop,spring,bloom,previous,departure,lift;
 let conversation=null,lastPrompt="";
 let sound, hasThunder=false;
 function newBall([x,y]){
- return {x,y,vx:0,vy:0,ground:false,normalX:0,normalY:-1,rotation:0,spin:0,face:1,squash:0,elasticVel:0,tilt:0,spring:null,riding:false,onFoothold:false,drop:0};
+ return {x,y,vx:0,vy:0,ground:false,normalX:0,normalY:-1,rotation:0,spin:0,face:1,squash:0,elasticVel:0,tilt:0,spring:null,riding:false,onFoothold:null,dropThrough:null,dropHeld:false};
 }
 function remember(){
  previous={x:ball.x,y:ball.y,rotation:ball.rotation,squash:ball.squash,cameraX:cam.x,cameraY:cam.y};
@@ -81,11 +107,12 @@ function reset(){
  progress={count:0,marks:new Map(),gate:0,rose:false,arches:new Set(),visited:new Set(["hub"]),poets:new Set(),springJumps:0,caveVisits:0};
  cave={discovered:false,reveal:0,entered:false,relief:0};
  spring={bend:0,x:0,y:0};
- sceneTitle={title:"Limbo",sub:"Canto IV",t:2.55};
+ sceneTitle={title:chapterTitle,sub:inLust?"Canto V":"Canto IV",t:2.55};
  checkpoint=stage.start;stepsOnWater=0;
- lift={y:stage.lift.bottom,last:stage.lift.bottom};
+ lift=stage.lift?{y:stage.lift.bottom,last:stage.lift.bottom}:null;
  if(conversation)closeConversation(false);
- $("location").textContent="I · Limbo";
+ $("location").textContent=circleLabel;
+ if($("next-circle"))$("next-circle").hidden=true;
  remember();
 }
 function chime(from,to,seconds=.14,vol=.046,type="sine",delay=0) {
@@ -143,7 +170,7 @@ function collideTerrain(){
  const s=ball;
  let support=null, strongest=0, impactX=0,impactY=0;
  let nearby=staticEdges;
- if(progress.gate<.95){
+ if(stage.port&&progress.gate<.95){
   const gate=stage.port,bottom=gate.bottom-gate.travel*ease(progress.gate);
   nearby=nearby.concat(polygonEdges([[gate.x-8,gate.top],[gate.x+8,gate.top],[gate.x+8,bottom],[gate.x-8,bottom]]));
  }
@@ -182,7 +209,7 @@ function collideTerrain(){
 }
 function catchSpring(oldY){
  if(ball.vy<39)return false;
- for(const [x,y,multiplier] of stage.pads){
+ for(const [x,y,multiplier] of stage.pads??[]){
   if(Math.abs(ball.x-x)>48||oldY+R>y||ball.y+R<y)continue;
   const hit=ball.vy;
   ball.riding=false;
@@ -210,10 +237,12 @@ function simulateBall(dt){
  const s=ball;
  const direction=Number(keys.has("ArrowRight")||keys.has("KeyD"))-Number(keys.has("ArrowLeft")||keys.has("KeyA"));
  const jump=keys.has("Space")||keys.has("ArrowUp")||keys.has("KeyW");
- s.drop=Math.max(0,s.drop-dt);
- if(keys.has("ArrowDown")&&(s.riding||s.onFoothold)){
-  s.riding=false;s.onFoothold=false;s.ground=false;s.drop=.25;s.y+=3;s.vy=62;
+ const pressingDrop=keys.has("ArrowDown")||keys.has("KeyS");
+ if(pressingDrop&&!s.dropHeld&&(s.riding||s.onFoothold)){
+  s.dropThrough=s.riding?"lift":s.onFoothold;
+  s.riding=false;s.onFoothold=null;s.ground=false;s.y+=3;s.vy=66;
  }
+ s.dropHeld=pressingDrop;
  const wasGround=s.ground;
  if(wasGround&&jump&&s.normalY<-.59){
   s.vy-=tuning.jump;
@@ -229,12 +258,20 @@ function simulateBall(dt){
   const friction=Math.sign(along)*Math.min(Math.abs(along),weight*tuning.friction*dt);
   s.vx-=friction*tx;s.vy-=friction*ty;
  }
+ if(!s.ground){
+  for(const wind of winds){
+   if(inWind(s.x,s.y,wind))s.vx+=windForce(wind,now)*dt;
+  }
+ }
  s.vy+=tuning.gravity*dt;
  const speed=Math.hypot(s.vx,s.vy);
  if(speed>999){s.vx*=999/speed;s.vy*=999/speed;}
  const ox=s.x,oy=s.y;
  s.x+=s.vx*dt;s.y+=s.vy*dt;
- if(!catchSpring(oy)){collideTerrain();landOnFoothold(ox,oy);landOnLift(oy);}
+ if(!catchSpring(oy)){
+  collideTerrain();landOnFoothold(ox,oy);landOnLift(oy);
+  if(s.ground&&!s.riding&&!s.onFoothold)s.dropThrough=null;
+ }
  if(s.ground){
   const travel=-(s.x-ox)*s.normalY+(s.y-oy)*s.normalX;
   s.spin=travel/(R*dt);
@@ -245,7 +282,14 @@ function simulateBall(dt){
  if(direction||Math.abs(s.vx)>12)s.face=toward(s.face,direction||Math.sign(s.vx),16,dt);
  s.tilt=toward(s.tilt,s.ground?Math.atan2(s.normalX,-s.normalY):clamp(s.vx*.0015,-.33,.33),15,dt);
 }
+function inWind(x,y,wind){
+ return x>=wind.x&&x<wind.x+wind.w&&y>=wind.y&&y<wind.y+wind.h;
+}
+function windForce(wind,t){
+ return wind.force*(.63+.37*sine(t*1.8+wind.tilt));
+}
 function moveLift(){
+ if(!lift)return;
  const {top,bottom,speed,wait}=stage.lift;
  const travel=(bottom-top)/speed;
  const loop=(travel+wait)*2;
@@ -259,29 +303,30 @@ function moveLift(){
 }
 function landOnFoothold(oldX,oldY){
  const s=ball;
- s.onFoothold=false;
- if(s.drop>0)return;
+ s.onFoothold=null;
  let best=null;
  for(const top of footholds){
-  if(s.x<top.x-3||s.x>top.right+3)continue;
+  if(s.dropThrough===top.id||s.x<top.x-3||s.x>top.right+3)continue;
   const y=top.y+(s.x-top.x)*top.slope-top.offset;
   const previousY=top.y+(oldX-top.x)*top.slope-top.offset;
   if(oldY>previousY+.8||s.y<y-.3||s.vx*top.nx+s.vy*top.ny>.1)continue;
-  if(!best||y<best.y)best={y,nx:top.nx,ny:top.ny};
+  if(!best||y<best.y)best={id:top.id,y,nx:top.nx,ny:top.ny};
  }
  if(!best)return;
- s.y=best.y;s.ground=true;s.onFoothold=true;s.normalX=best.nx;s.normalY=best.ny;
+ s.y=best.y;s.ground=true;s.onFoothold=best.id;s.dropThrough=null;s.normalX=best.nx;s.normalY=best.ny;
  const normalVelocity=Math.min(0,s.vx*best.nx+s.vy*best.ny);
  s.vx-=normalVelocity*best.nx;s.vy-=normalVelocity*best.ny;
 }
 function landOnLift(oldY){
+ if(!lift)return;
  const s=ball,{x,width}=stage.lift;
  const above=(oldY+R<=Math.max(lift.last,lift.y)+1.3);
- s.riding=s.drop===0&&above&&s.y+R>=lift.y-.3&&s.vy>=0&&Math.abs(s.x-x)<width*.5+8;
+ s.riding=s.dropThrough!=="lift"&&above&&s.y+R>=lift.y-.3&&s.vy>=0&&Math.abs(s.x-x)<width*.5+8;
  if(!s.riding)return;
- s.y=lift.y-R;s.vy=0;s.ground=true;s.normalX=0;s.normalY=-1;
+ s.y=lift.y-R;s.vy=0;s.ground=true;s.dropThrough=null;s.normalX=0;s.normalY=-1;
 }
 function insideCave(){
+ if(!stage.cave)return false;
  const [x,y,w,h]=stage.cave.bounds;
  return ball.x>=x+12&&ball.x<x+w-20&&ball.y>y+51&&ball.y<y+h-9;
 }
@@ -318,7 +363,8 @@ function nearbyInteraction(){
   if(kind==="lever"&&progress.marks.has(id))continue;
   if(kind==="relief"&&(!cave.entered||cave.relief))continue;
   if(kind==="gate"&&progress.marks.size===stage.switches.length)continue;
-  if(kind==="exit"&&progress.gate<1)continue;
+  if(kind==="exit"&&!(inLust?progress.poets.has("francesca"):progress.gate===1))continue;
+  if(kind==="threshold"&&progress.poets.has("francesca"))continue;
   const d=distance(ball.x,ball.y,x,y);
   if(Math.abs(ball.y-y)>33||d>range||d>=nearest)continue;
   target=candidate;nearest=d;
@@ -361,11 +407,16 @@ function advanceConversation(){
  if(conversation.index===conversation.lines.length)closeConversation(true);
  else showConversationLine();
 }
+function nextCircle(){
+ rememberRose(progress.rose);
+ window.location.assign("./?circle=2");
+}
 function useNearby(){
+ if(phase==="clear"&&!inLust){nextCircle();return;}
  if(conversation){advanceConversation();return;}
  const target=nearbyInteraction();
  if(!target)return;
- if(target.kind==="poet"||target.kind==="relief"){
+ if(target.lines){
   openConversation(target,target.lines);
  }else if(target.kind==="lever"){
   progress.marks.set(target.id,now);
@@ -387,12 +438,12 @@ function worldEvents(dt){
  for(const point of stage.checkpoints){
   if(checkpoint!==point && distance(s.x,s.y,...point)<27)checkpoint=point;
  }
- if(progress.marks.size===stage.switches.length&&progress.gate<1){
+ if(stage.switches&&progress.marks.size===stage.switches.length&&progress.gate<1){
   const before=progress.gate;
   progress.gate=Math.min(1,progress.gate+dt/.72);
   if(before<1&&progress.gate===1)chime(312,387,.24,.027);
  }
- for(let i=0;i<stage.arches.length;i++){
+ for(let i=0;i<(stage.arches?.length??0);i++){
   const [x,y]=stage.arches[i];
   if(s.y>y-140&&s.y<y+6&&Math.abs(s.x-x)<14&&!progress.arches.has(i)){
    progress.arches.add(i);
@@ -400,7 +451,7 @@ function worldEvents(dt){
   }
  }
  const w=stage.stream;
- if(s.ground&&s.x>w.left&&s.x<w.right&&Math.abs(s.y+R-surfaceY(eastBank,s.x))<8&&Math.abs(s.vx)>19){
+ if(w&&s.ground&&s.x>w.left&&s.x<w.right&&Math.abs(s.y+R-surfaceY(eastBank,s.x))<8&&Math.abs(s.vx)>19){
   stepsOnWater+=Math.abs(s.vx)*dt;
   if(stepsOnWater>15){
    stepsOnWater=0;emit("water",s.x,s.y+R-4,"#c8f0e0",4,36);
@@ -426,9 +477,10 @@ function tick(dt){
  }else if(phase==="exit"){
   departure.t=Math.min(1,departure.t+dt/.72);
   const t=ease(departure.t),x=mix(departure.x,stage.exit[0],t);
-  ball.rotation+=(x-ball.x)/R;ball.x=x;ball.y=mix(departure.y,stage.exit[1]+8,t);
+  ball.rotation+=(x-ball.x)/R;ball.x=x;ball.y=mix(departure.y,stage.exit[1]+(inLust?80:8),t);
   if(departure.t===1){
-   phase="clear";bloom=.55;$("location").textContent="I · Limbo cleared";
+   phase="clear";bloom=.55;$("location").textContent=circleLabel+" cleared";
+   if(!inLust&&$("next-circle"))$("next-circle").hidden=false;
   }
  }
  if(!ball.spring){
@@ -585,6 +637,11 @@ function terrain(){
   line(rim.map(([x,y])=>[x,y+4]),p.grass,7.0);
   line(rim.map(([x,y])=>[x,y+1.25]),p.rim,2.3);
   ctx.restore();
+  if(shape.oneWay){
+   for(const [x,y] of rim.slice(1,-1)){
+    if(visible(x,y,6))line([[x-3,y+4],[x,y+7],[x+3,y+4]],"#e3c69b",.85);
+   }
+  }
   if(shape.skin==="cave"||shape.skin==="castle")continue;
   for(const [x,y,s,q] of stems){
    if(!visible(x,y,8))continue;
@@ -964,7 +1021,8 @@ function liftShaft(tracks){
  outline([[x-half-4,y+1],[x-half,y-2],[x+half,y-2],[x+half+4,y+1],[x+half-1,y+11],[x-half+1,y+11]],"#64545d","#3e3b49",.9);
  line([[x-half,y],[x+half,y]],"#d3ae79",2.25);
  for(let i=-2;i<=2;i++){
-  ellipse(x+i*12,y+5,2,2,"#be936e");ellipse(x+i*12,y+5,1,1,"#e3c493");
+  const cx=x+i*11;
+  line([[cx-2.5,y+3],[cx,y+6],[cx+2.5,y+3]],"#f0c998",.8);
  }
 }
 
@@ -1077,19 +1135,55 @@ function hud(){
  const s=.72+Math.sin(pop*Math.PI*.75)*.17;
  eggShape(13,14,s,.24);
  textWithShadow(String(progress.count),24,19,"14px Georgia",1,"left");
- if(progress.rose)carvedRose(52,13.6,4.8,.9);
+ if(progress.rose||roseMemory)carvedRose(52,13.6,4.8,.9);
  if(phase==="clear"){
   const glass=ctx.createLinearGradient(0,79,0,212);
   glass.addColorStop(0,"#212b3700");glass.addColorStop(.45,"#212b37d4");glass.addColorStop(1,"#212b3700");fillRect(0,79,VIEW_W,133,glass);
-  textWithShadow("Into the dark",120,130,"23px Georgia");
-  const thought=progress.rose?"The rose is still warm.":progress.poets.size?"I can carry their voices.":"Another road lies below.";
+  textWithShadow(inLust?"The fall":"Into the dark",120,130,"23px Georgia");
+  const thought=inLust?"The wind falls away.":progress.rose?"The rose is still warm.":"Into the trembling air.";
   textWithShadow(thought,120,150,"italic 12px Georgia");
   textWithShadow(progress.count+" / "+goalCount+" eggs",120,171,"10px system-ui",.87);
-  textWithShadow("Jump to replay",120,188,"9px system-ui",.82);
+  textWithShadow(inLust?"Jump to replay":touchInput.matches?"Continue below":"E to descend to Lust",120,188,"9px system-ui",.82);
  }else if(sceneTitle.t>0){
   const opacity=clamp(sceneTitle.t/.67,0,1);
   textWithShadow(sceneTitle.title,VIEW_W/2,51,sceneTitle.title==="Limbo"?"29px Georgia":"18px Georgia",opacity);
   textWithShadow(sceneTitle.sub,VIEW_W/2,67,"10px Georgia",opacity*.85);
+ }
+}
+function drawStorm(){
+ for(const wind of winds){
+  if(frameView.y+VIEW_H<wind.y||frameView.y>wind.y+wind.h)continue;
+  const direction=Math.sign(wind.force),strength=Math.abs(windForce(wind,frameView.t)/wind.force);
+  for(let i=0;i<30;i++){
+   const phase=random(i*8+wind.y),y=wind.y+random(i*12.7+15)*wind.h;
+   const travel=frameView.t*(42+phase*60)*direction+phase*(wind.w+80);
+   const x=wind.x+((travel%(wind.w+80))+(wind.w+80))%(wind.w+80)-40;
+   if(!visible(x,y,35))continue;
+   line([[x,y],[x+direction*15,y+1],[x+direction*(22+strength*14),y-3]],rgba("#ebe0db",.20+phase*.16),.75);
+  }
+ }
+}
+function lustLandmarks(){
+ const judge=stage.poets[0];
+ if(visible(judge.x,judge.y-58,105)){
+  arch(judge.x,judge.y-1,128,117,"#343040","#9b8781",2);
+  arch(judge.x,judge.y-1,99,96,"#201e2e","#5f5061",1);
+  const curl=[[judge.x+10,judge.y-13],[judge.x+29,judge.y-7],[judge.x+43,judge.y-18],[judge.x+30,judge.y-27],[judge.x+19,judge.y-20]];
+  line(curl,"#bd988a",3);
+ }
+ const [x,y]=stage.roseEcho;
+ if(visible(x,y,62)){
+  arch(x,y+21,72,62,"#433958","#a2949c",1.4);
+  if(roseMemory)carvedRose(x,y-10,8,.86);
+ }
+ if(visible(430,810,110)){
+  glow(430,778,72,"#edd5c4",.26);
+  for(let i=0;i<2;i++){
+   const flight=frameView.t*.7+i*1.2,dx=23*Math.sin(flight);
+   const bx=430+dx+i*20-11,by=754+Math.cos(flight)*7;
+   line([[bx-7,by-2],[bx,by+2],[bx+8,by-3]],"#e9d9d2",1.45);
+  }
+  outline([[418,813],[426,812],[430,816],[439,812],[441,817],[430,820],[418,817]],"#ceb9a4","#564553",.8);
  }
 }
 const touchInput=window.matchMedia("(pointer: coarse)");
@@ -1116,18 +1210,23 @@ function draw(alpha){
  frameView={x:mix(previous.cameraX,cam.x,alpha),y:mix(previous.cameraY,cam.y,alpha),t:Math.max(0,now-(1-alpha)*DT)};
  ctx.setTransform(canvas.width/VIEW_W,0,0,canvas.height/VIEW_H,0,0);
  scenery();ctx.save();ctx.translate(-frameView.x,-frameView.y);
- liftShaft(true);statuesInMist();caveChamber();
- for(const args of groves)willow(...args);
- nobleCastle();endArch();springPlants();terrain();streamDraw();liftShaft(false);
- for(const args of ferns)littleFern(...args);
- poets();meadowGathering();leverAndGate();
+ if(inLust){
+  drawStorm();lustLandmarks();endArch();terrain();
+  stage.poets.forEach(({x,y,height,robe,prop},i)=>person(x,y,height,robe,i,prop));
+ }else{
+  liftShaft(true);statuesInMist();caveChamber();
+  for(const args of groves)willow(...args);
+  nobleCastle();endArch();springPlants();terrain();streamDraw();liftShaft(false);
+  for(const args of ferns)littleFern(...args);
+  poets();meadowGathering();leverAndGate();waymarks();
+ }
  for(const [x,y] of stage.checkpoints){
   if(!visible(x,y,34))continue;
   const lit=checkpoint[0]===x&&checkpoint[1]===y;
   glow(x,y,lit?18:12,"#fcdaa5",lit?.48:.21);
   strokeCheckpoint(x,y,lit);
  }
- waymarks();drawEggs();drawParticles();drawBall(alpha);ctx.restore();
+ drawEggs();drawParticles();drawBall(alpha);ctx.restore();
  const vignette=ctx.createRadialGradient(VIEW_W*.51,VIEW_H*.43,VIEW_W*.26,VIEW_W*.52,VIEW_H*.43,VIEW_H*.61);
  vignette.addColorStop(0,"#28323c00");vignette.addColorStop(1,"#2d26364e");fillRect(0,0,VIEW_W,VIEW_H,vignette);
  if(bloom>0)fillRect(0,0,VIEW_W,VIEW_H,rgba("#fff2ca",bloom*.09));
@@ -1137,7 +1236,7 @@ function strokeCheckpoint(x,y,lit){
  line([[x,y-8],[x,y+24]],"#817464",1.45);
  outline([[x,y-8],[x+4,y-2],[x+2,y+4],[x-3,y+4],[x-4,y-2]],lit?"#f4dfa9":"#b5aa88","#e4c7a283",.7);
 }
-const controlKeys=new Set(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","KeyA","KeyD","KeyW","KeyR","Enter","KeyE","Escape"]);
+const controlKeys=new Set(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","KeyA","KeyD","KeyW","KeyS","KeyR","Enter","KeyE","Escape"]);
 window.addEventListener("keydown",event=>{
  if(!controlKeys.has(event.code)||event.altKey||event.ctrlKey||event.metaKey)return;
  if(event.target.tagName==="BUTTON"&&(event.code==="Space"||event.code==="Enter"))return;
@@ -1172,6 +1271,8 @@ for(const control of document.querySelectorAll("[data-key]")){
 }
 $("touch-use").addEventListener("click",()=>{wakeAudio();useNearby();});
 $("advance").addEventListener("click",advanceConversation);
+$("next-circle")?.addEventListener("click",nextCircle);
+canvas.setAttribute?.("aria-label",chapterTitle+". Left and right roll. Space jumps. Down or S drops through marked ledges. E uses or talks. R restarts.");
 $("restart").addEventListener("click",()=>{keys.clear();reset();canvas.focus();});
 canvas.addEventListener("pointerdown",()=>{if(!conversation)canvas.focus();wakeAudio();});
 let previousTime=0,carry=0;

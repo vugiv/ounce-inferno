@@ -1,0 +1,53 @@
+{
+  "title": "Lust",
+  "width": 960,
+  "height": 1150,
+  "start": [474,241],
+  "exit": [776,1002],
+  "background": "bg-firelight",
+  "ground": [
+    {"id":"judgment","skin":"castle","rim":5,"points":[[350,282],[390,272],[469,268],[531,274],[566,285],[566,328],[531,317],[469,311],[390,315],[350,325]]},
+    {"id":"west-gully","skin":"cave","rim":5,"points":[[-30,431],[81,422],[158,410],[238,418],[302,436],[302,482],[238,464],[158,456],[81,468],[-30,477]]},
+    {"id":"east-gully","skin":"cave","rim":6,"points":[[562,451],[612,435],[681,427],[770,438],[858,452],[984,443],[984,492],[858,501],[770,487],[681,476],[612,484],[562,500]]},
+    {"id":"lee-upper","skin":"cave","rim":4,"points":[[321,501],[346,490],[383,490],[411,500],[411,512],[383,502],[346,502],[321,513]],"oneWay":true},
+    {"id":"lee-center","skin":"cave","rim":4,"points":[[418,553],[474,541],[548,548],[601,562],[601,574],[548,560],[474,553],[418,565]],"oneWay":true},
+    {"id":"lee-lower","skin":"cave","rim":4,"points":[[317,646],[380,630],[463,632],[530,650],[530,662],[463,644],[380,642],[317,658]],"oneWay":true},
+    {"id":"east-return","skin":"cave","rim":4,"points":[[737,594],[786,579],[849,588],[879,601],[879,613],[849,600],[786,591],[737,606]],"oneWay":true},
+    {"id":"east-lower","skin":"cave","rim":4,"points":[[666,716],[720,701],[798,714],[838,727],[838,739],[798,726],[720,713],[666,728]],"oneWay":true},
+    {"id":"doves","skin":"clear","rim":9,"points":[[84,851],[147,827],[236,814],[318,823],[404,813],[493,819],[596,810],[668,822],[702,839],[702,893],[668,876],[596,864],[493,873],[404,867],[318,877],[236,868],[147,881],[84,905]]},
+    {"id":"last-ledge","skin":"cave","rim":4,"points":[[712,936],[757,921],[818,930],[859,944],[859,956],[818,942],[757,933],[712,948]],"oneWay":true},
+    {"id":"descent","skin":"castle","rim":9,"points":[[-24,1046],[129,1058],[294,1041],[456,1052],[580,1040],[677,1026],[776,1022],[868,1033],[990,1048],[990,1175],[868,1160],[776,1149],[677,1153],[580,1167],[456,1179],[294,1168],[129,1185],[-24,1173]]}
+  ],
+  "wind": [
+    {"x":0,"y":319,"w":960,"h":278,"force":146,"tilt":0.8},
+    {"x":430,"y":597,"w":530,"h":196,"force":-126,"tilt":2.8},
+    {"x":708,"y":805,"w":252,"h":178,"force":96,"tilt":1.9}
+  ],
+  "eggs": [
+    [511,242],
+    [655,403],
+    [842,419],
+    [195,385],
+    [304,458],
+    [495,510],
+    [787,548],
+    [410,600],
+    [746,674],
+    [528,777],
+    [263,782],
+    [150,786],
+    [780,889],
+    [915,997]
+  ],
+  "checkpoints": [[474,248],[406,792],[775,1002]],
+  "zones": [
+    {"id":"threshold","x":0,"y":294,"w":960,"h":434,"title":"The unquiet wind"},
+    {"id":"doves","x":64,"y":735,"w":643,"h":153,"title":"Francesca and Paolo"}
+  ],
+  "roseEcho": [237,794],
+  "poets": [
+    {"name":"Minos","id":"minos","x":436,"y":270,"height":62,"robe":"#b28d76","prop":"sword","lines":[["Minos","Take care how you enter, and whom you trust. Do not be deceived by how wide the gate is."],["Virgil","Do not obstruct the journey appointed for him. It is willed where the will can be done. Ask no more."]]},
+    {"name":"Francesca","id":"francesca","x":410,"y":813,"height":47,"robe":"#947e86","prop":"scroll","lines":[["Ball","Weary souls, come speak with us, if it is permitted."],["Francesca","If the ruler of the world were our friend, we would pray for your peace. While the wind is quiet here, we will listen and speak with you."],["Francesca","Love took hold of him for the beauty that was taken from me. Love bound me to him in turn. Love led us to one death."],["Virgil","What are you thinking?"],["Ball","So many sweet thoughts and so much longing led them here. Francesca, how did you first recognize what you felt?"],["Francesca","There is no greater sorrow than remembering happiness in misery. But if you wish to know how it began, I will tell you through my tears."],["Francesca","One day we read of Lancelot and how love mastered him. Alone, we read until the lovers kissed. Then he kissed me, trembling."],["Francesca","The book and its writer brought us together. That day we read no further."],["Narrator","Paolo weeps while Francesca speaks. Pity overwhelms the ball."]]},
+    {"name":"Paolo","x":449,"y":816,"height":45,"robe":"#807d8b","prop":"staff","lines":[]}
+  ]
+}

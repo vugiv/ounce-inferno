@@ -40,7 +40,7 @@ button:disabled{cursor:default;opacity:.48}
 <body>
 <main>
   <div class="viewport">
-    <canvas id="game" width="720" height="960" tabindex="0" aria-label="Bounce Inferno, Limbo. Left and right roll. Space jumps. Down drops through ledges. E uses or talks. R restarts."></canvas>
+    <canvas id="game" width="720" height="960" tabindex="0" aria-label="Bounce Inferno, Limbo. Left and right roll. Space jumps. Down or S drops through marked ledges. E uses or talks. R restarts."></canvas>
     <section id="conversation" class="conversation" role="dialog" aria-label="Conversation" hidden>
       <div aria-live="polite" aria-atomic="true">
         <p id="speaker" class="speaker"></p>
@@ -62,15 +62,15 @@ button:disabled{cursor:default;opacity:.48}
   </div>
   <div class="keys">
     <span id="location">I · Limbo</span>
-    <span class="kbd">← → Roll · Space Jump · ↓ Drop · E Use</span>
-    <button type="button" id="restart">Restart</button>
+    <span class="kbd">← → Roll · Space Jump · ↓ / S Drop · E Use</span>
+    <div><button type="button" id="next-circle" hidden>Descend to Lust</button> <button type="button" id="restart">Restart</button></div>
   </div>
   <div id="interaction-status" class="visually-hidden" role="status"></div>
 </main>
 <script type="module">
 import("./game.js").catch(error => {
   console.error(error);
-  document.getElementById("location").textContent = "Could not load Limbo. Reload the page.";
+  document.getElementById("location").textContent = "Could not load the circle. Reload the page.";
 });
 </script>
 </body>
