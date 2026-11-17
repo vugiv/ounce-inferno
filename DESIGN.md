@@ -6,7 +6,7 @@
 
 ### Goal and context
 
-Bounce Inferno is a noncommercial browser game that uses the rolling, jumping, and momentum of Bounce Tales to stage Dante’s *Inferno*. The ball takes Dante’s place as a traveler. It asks his questions, listens with his curiosity, and reacts to what he witnesses. Virgil guides the descent. The player’s goal is to reach the next circle and understand something about the people and places along the way.
+Bounce Inferno is a noncommercial browser game that uses the rolling, jumping, and momentum of Bounce Tales to stage Dante’s *Inferno*. The ball takes Dante’s place as a traveler. It asks his questions, listens with his curiosity, and reacts to what he witnesses. Virgil flies beside the ball in each playable circle. He embodies the wise old man archetype through guidance, his staff, and a small light that stays visible in the dark. His flight has no collision. Nearby characters and usable objects take priority over speaking to him. The player’s goal is to reach the next circle and understand something about the people and places along the way.
 
 Each circle is one explorable world. Routes can rise, descend, and loop back around a landmark. Keep the close camera and a single backdrop per circle. Let structures, silhouettes, objects, sound, and the local movement mechanic give each circle its own identity. Use quiet spaces between encounters. Keep the play HUD to the egg count, discoveries, and nearby actions.
 
@@ -42,7 +42,7 @@ When laying out a level in JSON, Y increases downward. The ball is 40 logical pi
 
 ### Dialogue and adaptation
 
-Use Longfellow’s public-domain translation as the reference. Condense speech into short, readable panels and preserve who says it, what it means, and its place in the encounter. Give Dante’s spoken lines to **Ball**. Keep narration distinct. Use original lines for inscriptions, hints, and memory scenes created for the game.
+Use Longfellow’s public-domain translation as the reference. Condense speech into short, readable panels and preserve who says it, what it means, and its place in the encounter. Give Dante’s spoken lines to **Ball**. Make small adaptations when an objective needs a clue. In Limbo, Virgil adds the locations of the two levers. In Lust, the invitation to call to the two shades also guides the player toward shelter. Keep narration distinct. Use original lines for inscriptions, hints, and memory scenes created for the game.
 
 | Scene | What the player hears or sees |
 | --- | --- |
@@ -57,7 +57,7 @@ Primary text appears in [Canto IV](https://en.wikisource.org/wiki/Divine_Comedy_
 
 | Circle | Story beat | Design direction |
 | --- | --- | --- |
-| I. Limbo | The valley sighs. Virgil explains the inhabitants’ longing. The poets welcome the ball. The castle opens onto the meadow and the road down. | Playable hub. Shore to the west, fire to the east, castle above, cave and lift below. |
+| I. Limbo | Shades drift throughout the shore, paths, castle, meadow, and Undercroft. Virgil explains the inhabitants’ longing. The poets welcome the ball. The castle opens onto the meadow and the road down. | Playable hub. Shore to the west, fire to the east, castle above, cave and lift below. |
 | II. Lust | Minos warns the traveler. The storm carries the souls. Francesca tells her story beside the silent Paolo. The ball falls. | Playable first pass. Start at judgment, descend through exposed ledges or sheltered shelves, seek the pair, then take the lower threshold. |
 | III. Gluttony | Cerberus and the ceaseless rain. | Mud and pooled water with usable banks. |
 | IV. Avarice | Two groups roll weights against each other. | Opposing slopes and moving burdens. |
@@ -66,6 +66,24 @@ Primary text appears in [Canto IV](https://en.wikisource.org/wiki/Divine_Comedy_
 | VII. Violence | The river, the wood, and the burning plain. | Three connected areas with one coherent backdrop and a distinct obstacle in each. |
 | VIII. Fraud | The ten ditches of Malebolge. | Visible bridges and route choices that invite scrutiny. |
 | IX. Treachery | The ice of Cocytus and the final passage. | Slippery momentum, stillness, and the turn toward the way out. |
+
+### The ball’s alchemical colors
+
+The color sequence is the game’s symbolic reading of the descent. Use the Christian poem for the encounters and imagery, and let alchemy and Jungian shadow work guide visual choices. Keep the ball’s edge, face, and specular highlight legible at the 240 × 320 view. Color communicates an inward change. Each circle’s physics come from the terrain and its local mechanics.
+
+| Circle | Ball color | Alchemical reading |
+| --- | --- | --- |
+| I. Limbo | Grey / ashen | **Prima Materia.** The raw material waits in twilight before it enters the fire. |
+| II. Lust | Murky black | **Early Nigredo.** The wind strips away stability and begins the breakdown of the ego. |
+| III. Gluttony | Sludge black | **Nigredo, Dissolution.** Freezing rain dissolves form into mud and waste. |
+| IV. Greed | Charred black | **Nigredo, Calcination.** Colliding burdens grind attachment into ash. |
+| V. Wrath | Tar black | **Deep Nigredo.** The Styx brings repressed anger and sullenness to the surface. |
+| VI. Heresy | Black with red embers | **Nigredo, Incineration.** Burning tombs consume rigid beliefs. The first sparks appear inside the black. |
+| VII. Violence | Scorched white | **Transition to Albedo.** Blood, thorns, and burning sand scour the ball to a bleached surface. |
+| VIII. Fraud | Stark white | **Albedo, Purification.** The ditches of Malebolge expose masks and lies in cold, harsh light. |
+| IX. Treachery | Luminous gold | **Citrinitas, Awakening.** Stillness at Cocytus becomes the point where awareness returns. |
+
+**Rubedo comes after Circle IX.** At the center of the Earth, the direction of descent becomes ascent. Save the radiant red sphere and Philosopher’s Stone imagery for the moment the ball emerges and sees the stars. This is the planned end of *Inferno*. The current build implements the ashen and murky palettes. [Canto XXXIV](https://en.wikisource.org/wiki/Divine_Comedy_(Longfellow_1867)/Volume_1/Canto_34)
 
 ### Symbolism, discoveries, and rewards
 
@@ -87,7 +105,7 @@ Keep the current painted images as placeholders during layout. Draw replaceable 
 
 | Priority | Produce | Implementation or replacement note |
 | --- | --- | --- |
-| Shared | Ball shell and expressions, egg, pickup stars, checkpoint, prompt and dialogue styling | Current ball and egg use artwork in `public/assets/`. A single painted shell can rotate continuously. |
+| Shared | Ball shell and expressions, flying Virgil with staff, egg, pickup stars, checkpoint, prompt and dialogue styling | Current ball and egg use artwork in `public/assets/`. A single painted shell can rotate continuously and take a circle-specific palette. Virgil currently shares a placeholder figure. His production sprite needs a readable older face, mantle and staff. |
 | Limbo | One ravine backdrop, rock and moss surfaces, spring plant, poet silhouettes, fire, seven gates, lever, relief, rose | Retain the palette and shared stone proportions across the shore, castle, and cave. Supply a lit and dim treatment for the sixth alcove. |
 | Lust first art pass | One rough violet storm plate, storm rock, ledges with down chevrons, sheltered threshold and lower passage | The prototype uses the available firelight plate and existing stone, with wind trails as separate foreground animation. Replace the plate through `background` in `lust.json`. |
 | Lust characters and symbols | Minos with a silhouette and coiling tail, Francesca speaking, Paolo listening or weeping, two doves, an open book | Block out each silhouette at camera scale. Preserve one visible pose for each important story beat. Make the book recognizable near their feet. |

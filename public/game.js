@@ -39,6 +39,12 @@ const sine=(x)=>Math.sin(x);
 const distance=(x,y,a,b)=>Math.hypot(x-a,y-b);
 const random=(i)=>{const a=Math.sin(i*127.1+327.81)*43758.5453;return a-Math.floor(a);};
 const goalCount=stage.eggs.length;
+const ballPalettes={
+ ash:{filter:"grayscale(1) brightness(1.21) contrast(.88)",body:["#c7c8ca","#999ba0","#6e7078","#444957"],edge:"#393b46"},
+ murky:{filter:"grayscale(1) brightness(.66) contrast(1.14) sepia(.24) hue-rotate(145deg)",body:["#727b90","#424a5b","#272c39","#121723"],edge:"#141823"}
+};
+const ballPalette=ballPalettes[stage.ballPalette];
+const guide={kind:"poet",id:"virgil",label:"Talk to Virgil",height:stage.virgil.height,lines:stage.virgil.lines};
 function polygonEdges(points) {
  return points.map(([ax,ay],i)=>{
   const [bx,by]=points[(i+1)%points.length];
@@ -91,16 +97,17 @@ if(roseMemory){
   lines:[["Memory","A place was left for you beside the poets. The warmth of that place returns here."]]});
 }
 let ball,cam,eggs,fx,progress,cave,phase,now,sceneTitle,checkpoint,stepsOnWater,pop,spring,bloom,previous,departure,lift;
-let conversation=null,lastPrompt="";
+let conversation=null,lastPrompt="",virgil;
 let sound, hasThunder=false;
 function newBall([x,y]){
  return {x,y,vx:0,vy:0,ground:false,normalX:0,normalY:-1,rotation:0,spin:0,face:1,squash:0,elasticVel:0,tilt:0,spring:null,riding:false,onFoothold:null,dropThrough:null,dropHeld:false};
 }
 function remember(){
- previous={x:ball.x,y:ball.y,rotation:ball.rotation,squash:ball.squash,cameraX:cam.x,cameraY:cam.y};
+ previous={x:ball.x,y:ball.y,rotation:ball.rotation,squash:ball.squash,guideX:virgil.x,guideY:virgil.y,cameraX:cam.x,cameraY:cam.y};
 }
 function reset(){
  ball=newBall(stage.start);
+ placeVirgil();
  cam={x:clamp(ball.x-VIEW_W*.5,0,stage.width-VIEW_W),y:clamp(ball.y-VIEW_H*.61,0,stage.height-VIEW_H),vx:0,vy:0};
  eggs=stage.eggs.map(([x,y,kind],id)=>({x,y,kind,id,pickup:0,taken:false}));
  fx=[];phase="play";now=0;pop=0;bloom=0;departure=null;
@@ -148,6 +155,7 @@ function snapCamera(){
 }
 function respawn(){
  ball=newBall(checkpoint);
+ placeVirgil();
  fx=[];snapCamera();bloom=.50;
 }
 function updateCamera(dt){
@@ -355,6 +363,17 @@ function gather(){
   sceneTitle={title:"Six among the poets",sub:"",t:2.4};
  }
 }
+function placeVirgil(){
+ virgil={x:clamp(ball.x-48,21,stage.width-21),y:ball.y-24,side:-1};
+}
+function followVirgil(dt){
+ if(Math.abs(ball.vx)>65)virgil.side=-Math.sign(ball.vx);
+ const x=clamp(ball.x+virgil.side*48,21,stage.width-21);
+ const y=Math.max(50,ball.y-24+clamp(ball.vy*.045,-11,15));
+ // The guide glides on turns and catches up quickly when the ball falls.
+ virgil.x=clamp(toward(virgil.x,x,6,dt),ball.x-78,ball.x+78);
+ virgil.y=clamp(toward(virgil.y,y,7,dt),ball.y-72,ball.y+14);
+}
 function nearbyInteraction(){
  if(phase!=="play"||conversation||!ball.ground||ball.riding||ball.spring)return null;
  let target=null,nearest=Infinity;
@@ -369,7 +388,9 @@ function nearbyInteraction(){
   if(Math.abs(ball.y-y)>33||d>range||d>=nearest)continue;
   target=candidate;nearest=d;
  }
- return target;
+ if(target)return target;
+ if(distance(ball.x,ball.y,virgil.x,virgil.y)>83)return null;
+ return {...guide,x:virgil.x,y:virgil.y,promptY:virgil.y-guide.height-6};
 }
 function showConversationLine(){
  const [speaker,text]=conversation.lines[conversation.index];
@@ -474,6 +495,7 @@ function tick(dt){
   if(ball.spring)animateSpring(dt);
   else simulateBall(dt);
   worldEvents(dt);
+  followVirgil(dt);
  }else if(phase==="exit"){
   departure.t=Math.min(1,departure.t+dt/.72);
   const t=ease(departure.t),x=mix(departure.x,stage.exit[0],t);
@@ -708,9 +730,18 @@ const ferns=[[689,654,12],[784,636,12],[838,633,15],[570,662,15],[898,439,10],[1
  [1164,716,10],[1522,777,13],[1638,773,18],[1502,391,11],[1571,397,12],
  [157,790,13],[333,791,15],[384,786,16],[590,1086,15],[1084,1056,18]];
 function statuesInMist(){
- const shades=[[47,795,43,.53],[111,796,49,.60],[228,797,41,.59],[293,799,49,.66],[371,785,36,.51],[169,635,37,.45],[243,642,36,.47]];
- for(const [x,y,h,opacity] of shades){
-  if(!visible(x,y-h/2,h))continue;
+ const shades=[
+  [47,795,43,.53],[111,796,49,.60],[228,797,41,.59],[293,799,49,.66],[371,785,36,.51],[169,635,37,.45],[243,642,36,.47],
+  [443,755,37,.45],[523,675,48,.43],[616,656,45,.55],[706,643,43,.41],[787,628,36,.40],[912,600,42,.35],
+  [982,626,36,.56],[1061,655,42,.53],[1128,684,49,.53],[1382,773,35,.44],[1518,770,46,.51],[1642,769,48,.54],
+  [904,435,40,.39],[979,434,34,.46],[1059,433,43,.40],[1217,416,37,.46],[1305,417,40,.46],[1414,410,45,.47],[1581,393,38,.34],[1705,386,43,.41],
+  [301,1091,48,.42],[523,1081,38,.38],[630,1091,47,.50],[736,1078,40,.44],[836,1071,35,.39],[979,1074,42,.48],
+  [1138,1046,40,.41],[1337,1034,46,.45],[1513,1048,41,.49],[1633,1045,35,.40]
+ ];
+ for(const [anchorX,anchorY,h,opacity] of shades){
+  if(!visible(anchorX,anchorY-h/2,h))continue;
+  const drift=(frameView.t*.84+anchorX*.021);
+  const x=anchorX+sine(drift)*6,y=anchorY-6+sine(drift*1.33)*3;
   ctx.save();ctx.globalAlpha=opacity;
   if(!sprite("sighShade",x,y-h*.5,h*.63,h)){
    const g=ctx.createLinearGradient(x,y-h,x,y+2);
@@ -790,6 +821,20 @@ function fire(){
  for(let j=0;j<7;j++){
   const q=(t*(.48+j*.03)+j*.161)%1;
   ellipse(x+sine(q*6+j)*10+q*8,y-16-q*38,1.0,1.55,rgba("#ffe7ad",1-q));
+ }
+}
+function flyingVirgil(alpha){
+ if(phase==="clear")return;
+ const x=mix(previous.guideX,virgil.x,alpha);
+ const y=mix(previous.guideY,virgil.y,alpha)+sine(frameView.t*2.2)*3.5;
+ glow(x,y-22,30,"#bde4dc",.22);
+ person(x,y,guide.height,"#95bcb3",3,"staff",.86);
+ const side=ball.x>=x?1:-1;
+ line([[x+side*9,y-22],[x+side*12,y-3]],"#d4e3cd",1.1);
+ ellipse(x+side*9,y-23,1.5,1.5,"#d0ece0");
+ for(let i=0;i<3;i++){
+  const t=(frameView.t*.64+i*.34)%1;
+  ellipse(x+side*sine(t*3+i)*8,y+3+t*14,1.4-t*.7,1.7,rgba("#bde4dc",.65*(1-t)));
  }
 }
 function poets(){
@@ -1097,10 +1142,13 @@ function drawBall(alpha){
  if(phase==="exit")ctx.globalAlpha=1-ease(departure.t);
  ctx.scale((1-compress*.76)*shrink,(1+compress)*shrink);
  ctx.rotate(rot);
+ if(ballPalette)ctx.filter=ballPalette.filter;
  if(sprite("ball",0,0,40.6,41.8)){ctx.restore();return;}
+ ctx.filter="none";
  const body=ctx.createRadialGradient(-5,-7,3,3,5,24);
- body.addColorStop(0,"#ff8064");body.addColorStop(.40,"#f4513e");body.addColorStop(.77,"#d73742");body.addColorStop(1,"#88364b");
- ellipse(0,0,20.2,20.1,"#572f43");
+ const colors=ballPalette?.body??["#ff8064","#f4513e","#d73742","#88364b"];
+ [0,.4,.77,1].forEach((stop,i)=>body.addColorStop(stop,colors[i]));
+ ellipse(0,0,20.2,20.1,ballPalette?.edge??"#572f43");
  ellipse(0,0,19.1,18.85,body);
  ctx.save();ctx.beginPath();ctx.ellipse(0,0,18.8,18.5,0,0,Math.PI*2);ctx.clip();
  for(const [xx,yy,s,a] of [[11,12,4.7,.32],[-14,7,3.4,1.46],[8,-15,3.7,2.1],[-3,-17,2.4,.7]]){
@@ -1188,7 +1236,9 @@ function lustLandmarks(){
 }
 const touchInput=window.matchMedia("(pointer: coarse)");
 function drawInteractionPrompt(){
- const target=nearbyInteraction(),label=target?.label??"";
+ const interaction=nearbyInteraction();
+ const target=interaction===null||interaction.id==="virgil"&&Math.abs(ball.vx)>60?null:interaction;
+ const label=target?.label??"";
  if(label!==lastPrompt){
   lastPrompt=label;
   $("interaction-status").textContent=label?label+" ("+(touchInput.matches?"Use":"E")+")":"";
@@ -1226,7 +1276,7 @@ function draw(alpha){
   glow(x,y,lit?18:12,"#fcdaa5",lit?.48:.21);
   strokeCheckpoint(x,y,lit);
  }
- drawEggs();drawParticles();drawBall(alpha);ctx.restore();
+ drawEggs();drawParticles();flyingVirgil(alpha);drawBall(alpha);ctx.restore();
  const vignette=ctx.createRadialGradient(VIEW_W*.51,VIEW_H*.43,VIEW_W*.26,VIEW_W*.52,VIEW_H*.43,VIEW_H*.61);
  vignette.addColorStop(0,"#28323c00");vignette.addColorStop(1,"#2d26364e");fillRect(0,0,VIEW_W,VIEW_H,vignette);
  if(bloom>0)fillRect(0,0,VIEW_W,VIEW_H,rgba("#fff2ca",bloom*.09));

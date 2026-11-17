@@ -1,4 +1,6 @@
 {
+  "ballPalette": "murky",
+  "virgil": {"height":41,"lines":[["Ball","Master, who are those people whom the black air punishes?"],["Virgil","Among them are Semiramis, Dido, Cleopatra, and Helen. The wind carries them without rest."],["Virgil","Below, look for two shades travelling together. When they draw nearer, call to them by the love that leads them."]]},
   "title": "Lust",
   "width": 960,
   "height": 1150,
@@ -47,7 +49,7 @@
   "roseEcho": [237,794],
   "poets": [
     {"name":"Minos","id":"minos","x":436,"y":270,"height":62,"robe":"#b28d76","prop":"sword","lines":[["Minos","Take care how you enter, and whom you trust. Do not be deceived by how wide the gate is."],["Virgil","Do not obstruct the journey appointed for him. It is willed where the will can be done. Ask no more."]]},
-    {"name":"Francesca","id":"francesca","x":410,"y":813,"height":47,"robe":"#947e86","prop":"scroll","lines":[["Ball","Weary souls, come speak with us, if it is permitted."],["Francesca","If the ruler of the world were our friend, we would pray for your peace. While the wind is quiet here, we will listen and speak with you."],["Francesca","Love took hold of him for the beauty that was taken from me. Love bound me to him in turn. Love led us to one death."],["Virgil","What are you thinking?"],["Ball","So many sweet thoughts and so much longing led them here. Francesca, how did you first recognize what you felt?"],["Francesca","There is no greater sorrow than remembering happiness in misery. But if you wish to know how it began, I will tell you through my tears."],["Francesca","One day we read of Lancelot and how love mastered him. Alone, we read until the lovers kissed. Then he kissed me, trembling."],["Francesca","The book and its writer brought us together. That day we read no further."],["Narrator","Paolo weeps while Francesca speaks. Pity overwhelms the ball."]]},
+    {"name":"Francesca","id":"francesca","x":410,"y":813,"height":47,"robe":"#947e86","prop":"scroll","lines":[["Ball","Weary souls, come speak with us, if it is permitted."],["Narrator","The two shades come to the call, as doves fly home."],["Francesca","If the ruler of the world were our friend, we would pray for your peace. While the wind is quiet here, we will listen and speak with you."],["Francesca","Love took hold of him for the beauty that was taken from me. Love bound me to him in turn. Love led us to one death."],["Virgil","What are you thinking?"],["Ball","So many sweet thoughts and so much longing led them here. Francesca, how did you first recognize what you felt?"],["Francesca","There is no greater sorrow than remembering happiness in misery. But if you wish to know how it began, I will tell you through my tears."],["Francesca","One day we read of Lancelot and how love mastered him. Alone, we read until the lovers kissed. Then he kissed me, trembling."],["Francesca","The book and its writer brought us together. That day we read no further."],["Narrator","Paolo weeps while Francesca speaks. Pity overwhelms the ball."]]},
     {"name":"Paolo","x":449,"y":816,"height":45,"robe":"#807d8b","prop":"staff","lines":[]}
   ]
 }
