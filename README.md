@@ -1,12 +1,12 @@
 # Bounce Inferno
 
-Bounce Inferno is a one-level, noncommercial browser game inspired by the rolling physics of Bounce Tales and Limbo in Dante’s *Inferno*. You start near the center of Limbo and can explore the Sighing Shore, the Poets’ Fire, the Noble Castle and the Undercroft in different orders. The castle gate responds to the two levers. An optional cave lies off the lower route.
+Bounce Inferno is a one-level, noncommercial browser game inspired by the rolling physics of Bounce Tales and Limbo in Dante’s *Inferno*. You start near the center of Limbo and can explore the Sighing Shore, the Poets’ Fire, the Noble Castle and the Undercroft in different orders. Talk with Virgil and four poets, follow the water to the castle, or look for the carved alcoves in the Undercroft. The castle opens when you pull both levers.
 
 ## Play locally
 
 Use Node.js 20 or later. Run `npm start` from this directory and open [localhost:3000](http://localhost:3000).
 
-Use the arrow keys to roll, Space to jump, Down to drop through ledges or the lift, and R to restart. Touch controls appear on touch devices. Roll over levers to activate them. The shaft platform cycles automatically.
+Use Left and Right to roll, Space to jump, and Down to drop through ledges or the lift. Press E when a Use prompt appears. E also advances dialogue and Escape closes it. R restarts. Touch devices show corresponding controls. The lift cycles automatically.
 
 ## Deploy on Railway
 
@@ -16,7 +16,7 @@ Use the arrow keys to roll, Space to jump, Down to drop through ledges or the li
 
 ## Edit the level and art
 
-- `public/level.json` holds the world geometry and object positions. World coordinates are in logical pixels and Y increases downward. Solid polygons run clockwise. The `rim` value counts the vertices along the walkable top. A ledge with `oneWay` can be jumped through from below.
+- `public/level.json` holds the world geometry and object positions. World coordinates are in logical pixels and Y increases downward. Solid polygons run clockwise. The `rim` value counts the vertices along the walkable top. A ledge with `oneWay` can be jumped through from below. The `background` field names the single WebP used for the level. The `poets` and `cave.dialogue` entries hold the conversations and the relief inscription.
 - `public/assets/` holds the original painted placeholder sprites, backgrounds, and terrain textures created for this build. Replace the WebP files using the same names and approximate proportions. Transparent objects use alpha. Collision geometry lives in the level data.
 - `public/game.js` holds the movement, camera, stage events, and renderer. The `artFiles` object maps sprite names to files.
 

@@ -3,23 +3,21 @@ const VIEW_W=240, VIEW_H=320, R=20, DT=1/120;
 const tuning={gravity:400,acceleration:500,runSpeed:280,airControl:1.5,jump:288,friction:.60,ricochet:.10};
 const $=id=>document.getElementById(id);
 const canvas=$("game"), ctx=canvas.getContext("2d",{alpha:false});
+const stage=await fetch("./level.json").then(response=>{
+ if(!response.ok)throw new Error("Could not load the Limbo level.");
+ return response.json();
+});
 const artFiles={
  ball:"ball",egg:"egg",springPlant:"spring",castleArch:"arch",lever:"lever",rose:"rose",
  limboFire:"fire",poet:"poet",homer:"poet",crystals:"crystals",exit:"arch",
- "bg-ravine":"bg-ravine","bg-firelight":"bg-firelight","bg-grotto":"bg-grotto","bg-meadow":"bg-meadow",
- "stone-ravine":"stone-ravine","stone-firelight":"stone-firelight","stone-grotto":"stone-grotto","stone-meadow":"stone-meadow"
+ background:stage.background,
+ "stone-ravine":"stone-ravine","stone-grotto":"stone-grotto","stone-meadow":"stone-meadow"
 };
-const [stage,assets]=await Promise.all([
- fetch("./level.json").then(response=>{
-  if(!response.ok)throw new Error("Could not load the Limbo level.");
-  return response.json();
- }),
- Promise.all(Object.entries(artFiles).map(async ([key,name])=>{
-  const img=new Image();img.src="./assets/"+name+".webp";
-  try{await img.decode();return [key,img];}
-  catch{return [key,null];}
- })).then(entries=>Object.fromEntries(entries))
-]);
+const assets=Object.fromEntries(await Promise.all(Object.entries(artFiles).map(async ([key,name])=>{
+ const img=new Image();img.src="./assets/"+name+".webp";
+ try{await img.decode();return [key,img];}
+ catch{return [key,null];}
+})));
 const keys=new Set();
 const clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
 const mix=(a,b,t)=>a+(b-a)*t;
@@ -39,11 +37,38 @@ function polygonEdges(points) {
  }).filter(edge=>edge.len>.01);
 }
 const staticEdges=stage.ground.filter(g=>!g.oneWay).flatMap(g=>polygonEdges(g.points));
-const footholds=stage.ground.filter(g=>g.oneWay).flatMap(g=>g.points.slice(0,g.rim-1).map(([x,y],i)=>({x,y,right:g.points[i+1][0],endY:g.points[i+1][1]})));
+const footholds=stage.ground.filter(g=>g.oneWay).flatMap(g=>g.points.slice(0,g.rim-1).map(([x,y],i)=>{
+ const [right,endY]=g.points[i+1],span=right-x,rise=endY-y;
+ const length=Math.hypot(span,rise);
+ return {x,y,right,slope:rise/span,nx:rise/length,ny:-span/length,offset:R*length/span};
+}));
+const eastBank=stage.ground.find(shape=>shape.id==="hub-east");
+function surfaceY(shape,x){
+ for(let i=1;i<shape.rim;i++){
+  const [right,bottom]=shape.points[i];
+  if(x<=right){
+   const [left,top]=shape.points[i-1];
+   return mix(top,bottom,clamp((x-left)/(right-left),0,1));
+  }
+ }
+ return shape.points[shape.rim-1][1];
+}
+const useTargets=[
+ ...stage.poets.map(poet=>({
+  kind:"poet",id:poet.name,x:poet.x,y:poet.y-R,promptY:poet.y-poet.height-9,
+  label:"Talk to "+poet.name,range:43,lines:poet.lines
+ })),
+ ...stage.switches.map(mark=>({...mark,kind:"lever",promptY:mark.y-20,label:"Pull "+mark.label.toLowerCase(),range:41})),
+ {kind:"relief",x:stage.cave.relief[0],y:stage.cave.relief[1]+16,
+  promptY:stage.cave.relief[1]-52,label:"Read the relief",range:46,lines:stage.cave.dialogue},
+ {kind:"gate",x:stage.port.x,y:stage.port.bottom-R,promptY:stage.port.bottom-64,label:"Read the gate",range:48},
+ {kind:"exit",x:stage.exit[0],y:stage.exit[1],promptY:stage.exit[1]-54,label:"Descend",range:37}
+];
 let ball,cam,eggs,fx,progress,cave,phase,now,sceneTitle,checkpoint,stepsOnWater,pop,spring,bloom,previous,departure,lift;
+let conversation=null,lastPrompt="";
 let sound, hasThunder=false;
 function newBall([x,y]){
- return {x,y,vx:0,vy:0,ground:false,normalX:0,normalY:-1,rotation:0,face:1,squash:0,elasticVel:0,tilt:0,spring:null,riding:false,onFoothold:false,drop:0};
+ return {x,y,vx:0,vy:0,ground:false,normalX:0,normalY:-1,rotation:0,spin:0,face:1,squash:0,elasticVel:0,tilt:0,spring:null,riding:false,onFoothold:false,drop:0};
 }
 function remember(){
  previous={x:ball.x,y:ball.y,rotation:ball.rotation,squash:ball.squash,cameraX:cam.x,cameraY:cam.y};
@@ -53,13 +78,14 @@ function reset(){
  cam={x:clamp(ball.x-VIEW_W*.5,0,stage.width-VIEW_W),y:clamp(ball.y-VIEW_H*.61,0,stage.height-VIEW_H),vx:0,vy:0};
  eggs=stage.eggs.map(([x,y,kind],id)=>({x,y,kind,id,pickup:0,taken:false}));
  fx=[];phase="play";now=0;pop=0;bloom=0;departure=null;
- progress={count:0,marks:new Map(),gate:0,rose:false,arches:new Set(),visited:new Set(["hub"]),springJumps:0,caveVisits:0};
+ progress={count:0,marks:new Map(),gate:0,rose:false,arches:new Set(),visited:new Set(["hub"]),poets:new Set(),springJumps:0,caveVisits:0};
  cave={discovered:false,reveal:0,entered:false,relief:0};
  spring={bend:0,x:0,y:0};
  sceneTitle={title:"Limbo",sub:"Canto IV",t:2.55};
  checkpoint=stage.start;stepsOnWater=0;
  lift={y:stage.lift.bottom,last:stage.lift.bottom};
- $("location").textContent="I � Limbo";
+ if(conversation)closeConversation(false);
+ $("location").textContent="I · Limbo";
  remember();
 }
 function chime(from,to,seconds=.14,vol=.046,type="sine",delay=0) {
@@ -163,7 +189,7 @@ function catchSpring(oldY){
   ball.spring={x,y,impactX:ball.x,age:0,
    duration:((1100-clamp(hit,100,1000))*.5+20)*.00078,
    force:Math.min(400,hit)*multiplier};
-  ball.y=y-R;ball.vx=0;ball.vy=0;ball.ground=false;
+  ball.y=y-R;ball.vx=0;ball.vy=0;ball.ground=false;ball.spin*=.35;
   chime(118,83,.15,.045,"triangle");return true;
  }
  return false;
@@ -208,9 +234,14 @@ function simulateBall(dt){
  if(speed>999){s.vx*=999/speed;s.vy*=999/speed;}
  const ox=s.x,oy=s.y;
  s.x+=s.vx*dt;s.y+=s.vy*dt;
- if(!catchSpring(oy)){collideTerrain();landOnFoothold(oy);landOnLift(oy);}
- const displacement=s.x-ox;
- s.rotation+=displacement/R*(s.ground?1:.65);
+ if(!catchSpring(oy)){collideTerrain();landOnFoothold(ox,oy);landOnLift(oy);}
+ if(s.ground){
+  const travel=-(s.x-ox)*s.normalY+(s.y-oy)*s.normalX;
+  s.spin=travel/(R*dt);
+ }else if(!s.spring){
+  s.spin=toward(s.spin,s.vx/R,1.1,dt);
+ }
+ s.rotation+=s.spin*dt;
  if(direction||Math.abs(s.vx)>12)s.face=toward(s.face,direction||Math.sign(s.vx),16,dt);
  s.tilt=toward(s.tilt,s.ground?Math.atan2(s.normalX,-s.normalY):clamp(s.vx*.0015,-.33,.33),15,dt);
 }
@@ -226,23 +257,22 @@ function moveLift(){
  else lift.y=top+(t-2*wait-travel)*speed;
  if(ball.riding)ball.y+=lift.y-lift.last;
 }
-function landOnFoothold(oldY){
+function landOnFoothold(oldX,oldY){
  const s=ball;
  s.onFoothold=false;
- if(s.vy<0||s.drop>0)return;
+ if(s.drop>0)return;
  let best=null;
  for(const top of footholds){
   if(s.x<top.x-3||s.x>top.right+3)continue;
-  const span=top.right-top.x;
-  const q=clamp((s.x-top.x)/span,0,1);
-  const y=mix(top.y,top.endY,q);
-  if(oldY+R<=y+.35&&s.y+R>=y-.3&&(!best||y<best.y)){
-   const rise=top.endY-top.y,n=Math.hypot(span,rise);
-   best={y,nx:rise/n,ny:-span/n};
-  }
+  const y=top.y+(s.x-top.x)*top.slope-top.offset;
+  const previousY=top.y+(oldX-top.x)*top.slope-top.offset;
+  if(oldY>previousY+.8||s.y<y-.3||s.vx*top.nx+s.vy*top.ny>.1)continue;
+  if(!best||y<best.y)best={y,nx:top.nx,ny:top.ny};
  }
  if(!best)return;
- s.y=best.y-R;s.vy=0;s.ground=true;s.onFoothold=true;s.normalX=best.nx;s.normalY=best.ny;
+ s.y=best.y;s.ground=true;s.onFoothold=true;s.normalX=best.nx;s.normalY=best.ny;
+ const normalVelocity=Math.min(0,s.vx*best.nx+s.vy*best.ny);
+ s.vx-=normalVelocity*best.nx;s.vy-=normalVelocity*best.ny;
 }
 function landOnLift(oldY){
  const s=ball,{x,width}=stage.lift;
@@ -253,7 +283,7 @@ function landOnLift(oldY){
 }
 function insideCave(){
  const [x,y,w,h]=stage.cave.bounds;
- return ball.x>=x+12&&ball.x<x+w-20&&ball.y>y+74&&ball.y<y+h-9;
+ return ball.x>=x+12&&ball.x<x+w-20&&ball.y>y+51&&ball.y<y+h-9;
 }
 function gather(){
  const inCave=insideCave();
@@ -262,7 +292,6 @@ function gather(){
   cave.entered=true;cave.discovered=true;
   chime(260,392,.31,.026);chime(391,523,.38,.022,"sine",.07);
  } else if(!inCave)cave.entered=false;
- if(inCave&&ball.x<448)cave.relief=1;
  cave.reveal=toward(cave.reveal,inCave?1:0,10,DT);
  for(const item of eggs){
   if(item.taken||(item.kind==="secret"&&!cave.entered)||distance(ball.x,ball.y,item.x,item.y)>33)continue;
@@ -274,11 +303,82 @@ function gather(){
   const n=notes[(progress.count-1)%notes.length];
   chime(n,n*.98,.118,.036);chime(n*1.50,n*1.5,.22,.015,"sine",.035);
  }
- if(!progress.rose&&cave.entered&&distance(ball.x,ball.y,...stage.cave.rose)<35){
+ if(!progress.rose&&cave.entered&&cave.relief&&distance(ball.x,ball.y,...stage.cave.rose)<35){
   progress.rose=true;pop=1;bloom=1;
   emit("star",...stage.cave.rose,"#ffb6c2",14,93);
   chime(438,554,.45,.037);chime(660,887,.55,.021,"sine",.055);
   sceneTitle={title:"Six among the poets",sub:"",t:2.4};
+ }
+}
+function nearbyInteraction(){
+ if(phase!=="play"||conversation||!ball.ground||ball.riding||ball.spring)return null;
+ let target=null,nearest=Infinity;
+ for(const candidate of useTargets){
+  const {kind,id,x,y,range}=candidate;
+  if(kind==="lever"&&progress.marks.has(id))continue;
+  if(kind==="relief"&&(!cave.entered||cave.relief))continue;
+  if(kind==="gate"&&progress.marks.size===stage.switches.length)continue;
+  if(kind==="exit"&&progress.gate<1)continue;
+  const d=distance(ball.x,ball.y,x,y);
+  if(Math.abs(ball.y-y)>33||d>range||d>=nearest)continue;
+  target=candidate;nearest=d;
+ }
+ return target;
+}
+function showConversationLine(){
+ const [speaker,text]=conversation.lines[conversation.index];
+ $("speaker").textContent=speaker;
+ $("dialogue-line").textContent=text;
+ const last=conversation.index===conversation.lines.length-1;
+ $("advance-label").textContent=last?"Done":"Continue";
+}
+function openConversation(target,lines){
+ keys.clear();
+ ball.vx=0;ball.vy=0;ball.spin=0;
+ conversation={target,lines,index:0,returnFocus:document.activeElement};
+ showConversationLine();
+ $("conversation").hidden=false;
+ $("advance").focus({preventScroll:true});
+ chime(348,392,.22,.014);
+}
+function closeConversation(finished){
+ const {target,returnFocus}=conversation;
+ conversation=null;
+ $("conversation").hidden=true;
+ keys.clear();
+ if(finished&&target.kind==="poet")progress.poets.add(target.id);
+ if(finished&&target.kind==="relief"){
+  cave.relief=1;
+  const [x,y]=stage.cave.relief;
+  emit("star",x+52,y-26,"#f2c4a4",8,52);
+  chime(294,392,.36,.024);chime(440,523,.41,.018,"sine",.08);
+ }
+ (returnFocus&&returnFocus!==document.body?returnFocus:canvas).focus({preventScroll:true});
+}
+function advanceConversation(){
+ if(!conversation)return;
+ conversation.index++;
+ if(conversation.index===conversation.lines.length)closeConversation(true);
+ else showConversationLine();
+}
+function useNearby(){
+ if(conversation){advanceConversation();return;}
+ const target=nearbyInteraction();
+ if(!target)return;
+ if(target.kind==="poet"||target.kind==="relief"){
+  openConversation(target,target.lines);
+ }else if(target.kind==="lever"){
+  progress.marks.set(target.id,now);
+  emit("star",target.x,target.y,"#e4efb2",8,65);
+  chime(175,260,.28,.043,"triangle");
+  if(progress.marks.size===stage.switches.length)chime(311,391,.37,.037,"sine",.14);
+ }else if(target.kind==="gate"){
+  const missing=stage.switches.filter(mark=>!progress.marks.has(mark.id));
+  const clue=missing.length===2?"Two chains run from the gate, toward the shore and the poets' fire.":missing[0].label+" still has its chain drawn tight.";
+  openConversation(target,[["Castle gate",clue]]);
+ }else if(target.kind==="exit"){
+  phase="exit";departure={x:ball.x,y:ball.y,t:0};ball.vx=0;ball.vy=0;
+  chime(294,391,.44,.047);chime(440,586,.53,.027,"sine",.15);
  }
 }
 function worldEvents(dt){
@@ -287,27 +387,20 @@ function worldEvents(dt){
  for(const point of stage.checkpoints){
   if(checkpoint!==point && distance(s.x,s.y,...point)<27)checkpoint=point;
  }
- for(const mark of stage.switches){
-  if(progress.marks.has(mark.id)||distance(s.x,s.y,mark.x,mark.y)>30)continue;
-  progress.marks.set(mark.id,now);
-  emit("star",mark.x,mark.y,"#e4efb2",8,65);
-  chime(175,260,.28,.043,"triangle");
-  if(progress.marks.size===stage.switches.length)chime(311,391,.37,.037,"sine",.14);
- }
  if(progress.marks.size===stage.switches.length&&progress.gate<1){
   const before=progress.gate;
   progress.gate=Math.min(1,progress.gate+dt/.72);
   if(before<1&&progress.gate===1)chime(312,387,.24,.027);
  }
  for(let i=0;i<stage.arches.length;i++){
-  const x=stage.arches[i];
-  if(s.y>248&&s.y<457&&Math.abs(s.x-x)<14&&!progress.arches.has(i)){
+  const [x,y]=stage.arches[i];
+  if(s.y>y-140&&s.y<y+6&&Math.abs(s.x-x)<14&&!progress.arches.has(i)){
    progress.arches.add(i);
    emit("dust",x,s.y+11,"#f2c795",4,33);
   }
  }
  const w=stage.stream;
- if(s.ground&&s.y>w.y-29&&s.y<w.y+9&&s.x>w.left&&s.x<w.right&&Math.abs(s.vx)>19){
+ if(s.ground&&s.x>w.left&&s.x<w.right&&Math.abs(s.y+R-surfaceY(eastBank,s.x))<8&&Math.abs(s.vx)>19){
   stepsOnWater+=Math.abs(s.vx)*dt;
   if(stepsOnWater>15){
    stepsOnWater=0;emit("water",s.x,s.y+R-4,"#c8f0e0",4,36);
@@ -319,14 +412,12 @@ function worldEvents(dt){
   progress.visited.add(zone.id);
   sceneTitle={title:zone.title,sub:"",t:2.06};
  }
- if(s.y>stage.height+30){respawn();return;}
- if(distance(s.x,s.y,...stage.exit)<32 && progress.marks.size===stage.switches.length){
-  phase="exit";departure={x:s.x,y:s.y,t:0};s.vx=0;s.vy=0;
-  chime(294,391,.44,.047);chime(440,586,.53,.027,"sine",.15);
- }
+ if(s.y>stage.height+30)respawn();
 }
 function tick(dt){
- remember();now+=dt;
+ remember();
+ if(conversation)return;
+ now+=dt;
  if(phase==="play"){
   moveLift();
   if(ball.spring)animateSpring(dt);
@@ -337,7 +428,7 @@ function tick(dt){
   const t=ease(departure.t),x=mix(departure.x,stage.exit[0],t);
   ball.rotation+=(x-ball.x)/R;ball.x=x;ball.y=mix(departure.y,stage.exit[1]+8,t);
   if(departure.t===1){
-   phase="clear";bloom=.55;$("location").textContent="I � Limbo cleared";
+   phase="clear";bloom=.55;$("location").textContent="I · Limbo cleared";
   }
  }
  if(!ball.spring){
@@ -358,13 +449,13 @@ function tick(dt){
 }
 
 const palettes={
- mist:{sky0:"#6d8996",sky1:"#a9b5a5",far:"#718f95",mid:"#5b7679",near:"#435c62",ground:"#5a6b6f",core:"#2c4047",line:"#9da698",rim:"#a9bb90",grass:"#657c67"},
- clear:{sky0:"#9e796b",sky1:"#cec095",far:"#b3957f",mid:"#8a806e",near:"#65685c",ground:"#676a65",core:"#3a4444",line:"#ac947b",rim:"#c6bd8a",grass:"#788758"},
- cave:{sky0:"#323748",sky1:"#667074",far:"#536471",mid:"#465b68",near:"#394655",ground:"#53506a",core:"#272838",line:"#787289",rim:"#a4a2a6",grass:"#60726f"},
- castle:{sky0:"#a0856a",sky1:"#d1bd94",far:"#a9927d",mid:"#84796e",near:"#686b64",ground:"#77675d",core:"#423f43",line:"#9d826c",rim:"#c0ad85",grass:"#899065"},
- meadow:{sky0:"#78999a",sky1:"#d0cba1",far:"#a2af9a",mid:"#7a917f",near:"#576f65",ground:"#687254",core:"#3c4c43",line:"#adb286",rim:"#d1cc8a",grass:"#90a565"}
+ mist:{ground:"#5a6b6f",core:"#2c4047",line:"#9da698",rim:"#a9bb90",grass:"#657c67"},
+ clear:{ground:"#626d67",core:"#354544",line:"#a3a38a",rim:"#b9bd90",grass:"#768566"},
+ cave:{ground:"#535363",core:"#292f3c",line:"#7c8190",rim:"#a2a4a8",grass:"#60726f"},
+ castle:{ground:"#726b62",core:"#444246",line:"#9d896f",rim:"#c0ad85",grass:"#899065"},
+ meadow:{ground:"#687254",core:"#3c4c43",line:"#adb286",rim:"#d1cc8a",grass:"#90a565"}
 };
-const stoneForSkin={mist:"ravine",clear:"firelight",castle:"meadow",cave:"grotto",meadow:"meadow"};
+const stoneForSkin={mist:"ravine",clear:"ravine",castle:"ravine",cave:"grotto",meadow:"meadow"};
 const patterns=Object.fromEntries(Object.entries(stoneForSkin).map(([skin,kind])=>{
  const img=assets["stone-"+kind];
  return [skin,img?ctx.createPattern(img,"repeat"):null];
@@ -428,30 +519,25 @@ function flare(x,y,r,color,angle=0){
  ctx.restore();
 }
 function scenery(){
- const {x,y,t}=frameView;
- const posX=x+VIEW_W*.5,posY=y+VIEW_H*.62;
- const east=ease(clamp((posX-980)/360,0,1));
- const under=ease(clamp((posY-830)/145,0,1));
- const high=ease(clamp((570-posY)/133,0,1))*ease(clamp((posX-730)/275,0,1));
- const sky=ctx.createLinearGradient(0,0,0,VIEW_H);
- sky.addColorStop(0,"#465065");sky.addColorStop(1,"#969783");
- fillRect(0,0,VIEW_W,VIEW_H,sky);
- const xOffset=-20-(x/Math.max(1,stage.width-VIEW_W))*83;
- const yOffset=-24-(y/Math.max(1,stage.height-VIEW_H))*77;
- const size=VIEW_H+125;
- for(const [name,a] of [["ravine",1],["firelight",east],["meadow",high],["grotto",under]]){
-  const img=assets["bg-"+name];
-  if(!img||a<.005)continue;
-  ctx.save();ctx.globalAlpha=a;
-  ctx.drawImage(img,xOffset,yOffset,size,size);ctx.restore();
+ const {x,y,t}=frameView,img=assets.background;
+ if(img){
+  const scale=Math.max((VIEW_W+124)/img.naturalWidth,(VIEW_H+116)/img.naturalHeight);
+  const width=img.naturalWidth*scale,height=img.naturalHeight*scale;
+  const panX=(x/(stage.width-VIEW_W)-.5)*86;
+  const panY=(y/(stage.height-VIEW_H)-.5)*70;
+  ctx.drawImage(img,(VIEW_W-width)/2-panX,(VIEW_H-height)/2-panY,width,height);
+ }else{
+  const sky=ctx.createLinearGradient(0,0,0,VIEW_H);
+  sky.addColorStop(0,"#465065");sky.addColorStop(1,"#969783");
+  fillRect(0,0,VIEW_W,VIEW_H,sky);
  }
  const tint=ctx.createLinearGradient(0,0,0,VIEW_H);
- tint.addColorStop(0,"#1c253115");tint.addColorStop(.8,rgba("#152334",.13+under*.09));tint.addColorStop(1,"#1726324c");
+ tint.addColorStop(0,"#1c25311c");tint.addColorStop(1,"#17263255");
  fillRect(0,0,VIEW_W,VIEW_H,tint);
  for(let i=0;i<7;i++){
   const Y=65+i*42+sine(t*.36+i*1.2)*6-(y*.17)%54;
-  const X=((random(i+17)*410+t*(5+i*.27)-x*.17+600)%410)-72;
-  ellipse(X,Y,59+random(i)*46,7+random(10+i)*7,rgba("#e6d4b7",.06+under*.03));
+  const X=((random(i+17)*410+t*(5+i*.27)-x*.12+600)%410)-72;
+  ellipse(X,Y,59+random(i)*46,7+random(10+i)*7,"#e6d4b712");
  }
 }
 const surfaceArt=stage.ground.map((shape,i)=>{
@@ -512,18 +598,6 @@ function terrain(){
   }
  }
 }
-function mist(){
- const {x,y,t}=frameView;
- if(y>690||x>1080)return;
- for(let i=0;i<7;i++){
-  const yy=y+71+i*35+sine(t*.65+i)*9;
-  const xx=x+((i*67+random(i+12)*35+t*(7+i*.7))%365)-67;
-  const g=ctx.createRadialGradient(xx,yy,2,xx,yy,70);
-  g.addColorStop(0,rgba("#d2d9c3",.21));g.addColorStop(1,"#d2d9c300");
-  ellipse(xx,yy,68,12+random(i+3)*6,g,-.06+random(i+18)*.12);
- }
-}
-
 function leaf(x,y,len,w,angle,color,rib=null){
  ctx.save();ctx.translate(x,y);ctx.rotate(angle);
  ctx.beginPath();ctx.moveTo(0,0);
@@ -569,14 +643,13 @@ function littleFern(x,y,size,seed=x){
  }
 }
 const groves=[
- [92,794,64,1,false],[262,645,91,2,false],[316,792,61,3,false],[484,727,55,4,false],
- [577,655,73,5,false],[725,646,58,6,true],[989,633,75,7,true],
- [1174,781,84,8,true],[1406,775,70,9,true],[1634,774,74,10,true],
- [1525,392,71,11,true],[1726,390,95,12,true]
+ [92,796,64,1,false],[263,647,83,2,false],[316,794,61,3,false],[484,708,55,4,false],
+ [577,661,69,5,false],[673,656,48,6,true],[983,628,68,7,true],[1138,700,62,8,true],
+ [1629,771,75,9,true],[1597,400,65,10,true]
 ];
-const ferns=[[711,649,12],[788,637,14],[835,634,15],[569,662,15],[908,440,13],[1080,430,10],[1399,417,11],
- [1195,779,14],[1274,774,20],[1457,769,15],[1663,771,20],[1504,390,14],[1539,393,16],[1723,391,18],
- [155,791,13],[333,790,19],[384,787,16],[553,1080,15],[1084,1056,18]];
+const ferns=[[689,654,12],[784,636,12],[838,633,15],[570,662,15],[898,439,10],[1112,557,9],[1444,407,10],
+ [1164,716,10],[1522,777,13],[1638,773,18],[1502,391,11],[1571,397,12],
+ [157,790,13],[333,791,15],[384,786,16],[590,1086,15],[1084,1056,18]];
 function statuesInMist(){
  const shades=[[47,795,43,.53],[111,796,49,.60],[228,797,41,.59],[293,799,49,.66],[371,785,36,.51],[169,635,37,.45],[243,642,36,.47]];
  for(const [x,y,h,opacity] of shades){
@@ -663,13 +736,8 @@ function fire(){
  }
 }
 function poets(){
- if(!visible(1230,757,148))return;
- person(1163,785,45,"#687c80",3,"staff",.94);
- person(1187,784,51,"#b38b72",0,"sword");
- person(1211,777,45,"#947e86",1,"scroll");
- person(1264,772,44,"#a5a17a",2,"laurel");
- person(1291,777,42,"#807d8b",3,"scroll");
  fire();
+ stage.poets.forEach(({x,y,height,robe,prop},i)=>person(x,y,height,robe,i,prop,i===0?.92:1));
 }
 function crystal(x,y,h,seed){
  if(sprite("crystals",x,y-h*.56,h*1.06,h*1.25))return;
@@ -694,9 +762,9 @@ function carvedRose(x,y,r,alpha=1){
 function caveChamber(){
  const {bounds:[x,y,w,h],mouth:[mx,my],relief:[rx,ry],rose:[sx,sy]}=stage.cave;
  if(frameView.x>x+w+20||frameView.x+VIEW_W<x-10||frameView.y>y+h||frameView.y+VIEW_H<y)return;
- const shape=[[x-4,y+27],[x+26,y+7],[x+85,y+9],[x+132,y-4],[x+188,y+7],[x+245,y+24],[x+w-26,y+46],[x+w,y+89],[x+w+4,y+h-43],[x+w-12,y+h-13],[x+31,y+h-11],[x+2,y+h-36]];
+ const shape=[[x+2,y+46],[x+34,y+32],[x+86,y+30],[x+135,y+19],[x+187,y+22],[x+245,y+34],[x+w-25,y+52],[x+w,y+77],[x+w+1,y+h-35],[x+w-15,y+h-12],[x+21,y+h-13],[x+1,y+h-38]];
  const g=ctx.createLinearGradient(x,y,x+w,y+h);
- g.addColorStop(0,"#323040");g.addColorStop(.67,"#45455a");g.addColorStop(1,"#252e3b");
+ g.addColorStop(0,"#31353f");g.addColorStop(.67,"#474854");g.addColorStop(1,"#28343c");
  outline(shape,g,"#2b2a37",3);
  ctx.save();ctx.clip();
  if(cave.reveal>.004){
@@ -715,7 +783,7 @@ function caveChamber(){
   }
   sprite("caveRelief",rx-5,ry-24,155,55);
   crystal(x+45,y+h-33,25,2);crystal(x+222,y+h-33,20,9);crystal(x+258,y+h-33,18,7);
-  if(!progress.rose)carvedRose(sx,sy,8.7,cave.reveal);
+  if(cave.relief&&!progress.rose)carvedRose(sx,sy,8.7,cave.reveal);
  }
  const shadow=ctx.createLinearGradient(x,y,x+w,y);
  shadow.addColorStop(0,rgba("#2d303e",1-cave.reveal));
@@ -742,31 +810,35 @@ function caveChamber(){
 }
 
 function streamDraw(){
- const {left,right,y}=stage.stream;
- if(frameView.x+VIEW_W<left-30||frameView.x>right+30||Math.abs(frameView.y+150-y)>190)return;
- const top=[[left-6,y+7],[left+14,y+6],[left+37,y+11],[left+79,y+13],[left+126,y+8],[left+177,y+8],[right+11,y+5]];
- const bank=[[right+8,y+15],[right-26,y+22],[left+117,y+20],[left+66,y+25],[left+15,y+18]];
- const g=ctx.createLinearGradient(0,y,0,y+24);
- g.addColorStop(0,"#ccdec394");g.addColorStop(.42,"#abd0b3b9");g.addColorStop(1,"#668f8dd6");
- outline([...top,...bank],g,rgba("#d9e3c5",.50),.7);
+ const {left,right}=stage.stream,y=surfaceY(eastBank,(left+right)/2);
+ if(frameView.x+VIEW_W<left-16||frameView.x>right+16||frameView.y+VIEW_H<y-14||frameView.y>y+20)return;
+ const bank=Array.from({length:10},(_,i)=>{
+  const x=mix(left,right,i/9);
+  return [x,surfaceY(eastBank,x)];
+ });
+ const top=bank.map(([x,y],i)=>[x,y-1.5-Math.sin(i)*1.1]);
+ const bottom=[...bank].reverse().map(([x,y],i)=>[x,y+3+Math.sin(i/9*Math.PI)*8]);
+ const water=ctx.createLinearGradient(0,y-7,0,y+15);
+ water.addColorStop(0,"#a7cbc39c");water.addColorStop(1,"#537a7aed");
+ outline([...top,...bottom],water,"#c4d7b17a",.65);
  ctx.save();ctx.clip();
- for(let i=0;i<15;i++){
-  const q=(frameView.t*(.63+i*.027)+i*.172)%1;
-  const x=left+q*(right-left+14)-7,py=y+9+i%5*2.8;
-  line([[x,py],[x+5,py-1],[x+18,py]],rgba(i%3?"#e2ebcf":"#778f8b",.65*Math.sin(q*Math.PI)),.72);
+ for(let i=0;i<10;i++){
+  const q=(frameView.t*(.27+i*.016)+i*.172)%1;
+  const x=mix(left,right,q),py=surfaceY(eastBank,x)+i%4*2.7;
+  line([[x,py],[x+5,py-1],[x+12,py]],rgba("#e0e9cc",.58*Math.sin(q*Math.PI)),.68);
  }
  ctx.restore();
- for(const [dx,dy,w] of [[12,15,8],[36,16,7],[66,16,10],[103,14,5],[142,11,9]]){
-  const x=left+dx,yy=y+dy;
-  ellipse(x,yy,w,2.6,rgba("#5f7569",.89),.075);ellipse(x-1,yy-1,w*.55,1.15,"#b9bf9b");
+ for(const [offset,w] of [[12,5],[38,7],[67,5],[88,8]]){
+  const x=left+offset,yy=surfaceY(eastBank,x)+2;
+  ellipse(x,yy,w,1.75,"#64796d",.075);
+  ellipse(x-1,yy-.65,w*.53,.9,"#b3b99a");
  }
 }
-const archY=[439,432,432,428,421,418,403];
 function nobleCastle(){
  if(frameView.y+VIEW_H<295||frameView.y>454)return;
  const roman=["I","II","III","IV","V","VI","VII"];
  for(let i=0;i<stage.arches.length;i++){
-  const x=stage.arches[i],y=archY[i],w=38+i%3*4,h=102-i%2*12;
+  const [x,y]=stage.arches[i],w=38+i%3*4,h=102-i%2*12;
   if(!visible(x,y-h*.51,69))continue;
   const entered=progress.arches.has(i),p=palettes.castle;
   const back=ctx.createLinearGradient(x-30,y-h,x+40,y+4);
@@ -798,7 +870,10 @@ function leverAndGate(){
   if(!visible(x,y,42))continue;
   const hit=progress.marks.get(id),on=hit!==undefined;
   ctx.save();ctx.translate(x,y+3);
-  if(on){glow(0,-13,23,id==="mist"?"#c4f3d6":"#ffdd89",.49);ctx.scale(-1,1);}
+  if(on){
+   glow(0,-13,23,id==="mist"?"#c4f3d6":"#ffdd89",.49);
+   ctx.rotate(-.49*ease(clamp((now-hit)/.19,0,1)));
+  }
   if(!sprite("lever",0,0,26,29)){
    ellipse(0,12,14,4,"#3f4246");line([[-7,9],[6,-9]],"#bc9667",4);
   }
@@ -819,15 +894,13 @@ function leverAndGate(){
  }
 }
 function meadowGathering(){
- const x=1532,y=392;
- if(!visible(x,y-54,110))return;
- glow(x,y-77,93,"#eff0a3",.24);
+ const x=1546,y=394;
+ if(!visible(x,y-39,91))return;
+ glow(x,y-44,74,"#e6e2a7",.19);
  paver(x,y);
- person(1477,400,32,"#7c8b81",1,"scroll");
- person(1501,391,34,"#9c977f",2,"laurel");
- person(1532,387,44,"#b59f7e",0,"scroll");
- person(1560,394,34,"#858476",3,"scroll");
- person(1586,400,31,"#998685",1,"staff");
+ person(1508,391,31,"#7c8b81",1,"scroll");
+ person(1546,388,38,"#b59f7e",0,"scroll");
+ person(1580,398,30,"#858476",3,"scroll");
 }
 function paver(x,y){
  ellipse(x,y+2,43,5,"#66735a");pave(x-23,y-8,46,7,"#8e9277","#bec28b");
@@ -843,7 +916,7 @@ function springPlants(){
   ctx.quadraticCurveTo(x+8,y+35,x+17,y+63);
   ctx.strokeStyle="#4b6553";ctx.lineWidth=7.5;ctx.stroke();
   leaf(x-15,y+51,25,5.7,-2.52,"#79976b","#c3c3908c");leaf(x+9,y+42,24,5,-.7,"#657e54","#d4cf8d8c");
-  if(sprite("springPlant",x+drift,y+bend+19,92,49))continue;
+  if(sprite("springPlant",x+drift,y+bend+15,92,49))continue;
   glow(x,y+bend+8,36,"#f5ba99",.20);
   for(let j=-3;j<=3;j++){
    const X=x+j*12, Y=y+bend+8+Math.abs(j)*1.6;
@@ -856,7 +929,7 @@ function springPlants(){
 function endArch(){
  const [x,y]=stage.exit;
  if(!visible(x,y-38,95))return;
- const floor=y+37;
+ const floor=y+R;
  const g=ctx.createLinearGradient(x,floor-117,x,floor);
  g.addColorStop(0,"#514b58");g.addColorStop(1,"#292735");
  arch(x,floor,88,113,g,"#716e76",2.4);
@@ -867,7 +940,7 @@ function endArch(){
  line([[x-21,floor-4],[x-19,floor-60]],"#b6a48d5e",1);
 }
 function waymarks(){
- const marks=[[535,637,-1],[1172,699,1],[852,609,1],[941,599,-1],[1595,736,1],[1735,870,-1],[732,585,1]];
+ const marks=[[535,637,-1],[852,609,1],[941,599,-1],[1330,679,-1],[1160,468,1],[1703,974,-1],[732,585,1]];
  for(const [x,y,dir] of marks){
   if(!visible(x,y,35))continue;
   ctx.save();ctx.translate(x,y);
@@ -965,17 +1038,13 @@ function drawBall(alpha){
  const shrink=phase==="exit"?1-ease(departure.t)*.49:1;
  if(phase==="exit")ctx.globalAlpha=1-ease(departure.t);
  ctx.scale((1-compress*.76)*shrink,(1+compress)*shrink);
- if(assets.ball){
-  ctx.save();ctx.rotate(Math.sin(rot)*.055);
-  if(face<-.04)ctx.scale(-1,1);
-  sprite("ball",0,0,40.6,41.8);ctx.restore();ctx.restore();return;
- }
+ ctx.rotate(rot);
+ if(sprite("ball",0,0,40.6,41.8)){ctx.restore();return;}
  const body=ctx.createRadialGradient(-5,-7,3,3,5,24);
  body.addColorStop(0,"#ff8064");body.addColorStop(.40,"#f4513e");body.addColorStop(.77,"#d73742");body.addColorStop(1,"#88364b");
  ellipse(0,0,20.2,20.1,"#572f43");
  ellipse(0,0,19.1,18.85,body);
  ctx.save();ctx.beginPath();ctx.ellipse(0,0,18.8,18.5,0,0,Math.PI*2);ctx.clip();
- ctx.rotate(rot);
  for(const [xx,yy,s,a] of [[11,12,4.7,.32],[-14,7,3.4,1.46],[8,-15,3.7,2.1],[-3,-17,2.4,.7]]){
   ellipse(xx,yy,s,1.3,"#ff9e8b88",a);
  }
@@ -1008,24 +1077,40 @@ function hud(){
  const s=.72+Math.sin(pop*Math.PI*.75)*.17;
  eggShape(13,14,s,.24);
  textWithShadow(String(progress.count),24,19,"14px Georgia",1,"left");
- for(let i=0;i<stage.switches.length;i++){
-  const on=progress.marks.has(stage.switches[i].id);
-  const x=53+i*13,y=14;
-  ellipse(x,y,4.2,4.2,on?(i===0?"#afdbc1":"#fbd184"):"#5c575f");
-  if(on)flare(x,y,2.8,"#fff6d0");
- }
- if(progress.rose)carvedRose(83,13.6,4.8,.9);
+ if(progress.rose)carvedRose(52,13.6,4.8,.9);
  if(phase==="clear"){
   const glass=ctx.createLinearGradient(0,79,0,212);
   glass.addColorStop(0,"#212b3700");glass.addColorStop(.45,"#212b37d4");glass.addColorStop(1,"#212b3700");fillRect(0,79,VIEW_W,133,glass);
-  textWithShadow("Limbo cleared",120,134,"24px Georgia");
-  textWithShadow(progress.count+" / "+goalCount+" eggs",120,156,"12px Georgia",.95);
-  textWithShadow("Jump to replay",120,174,"10px Georgia",.83);
+  textWithShadow("Into the dark",120,130,"23px Georgia");
+  const thought=progress.rose?"The rose is still warm.":progress.poets.size?"I can carry their voices.":"Another road lies below.";
+  textWithShadow(thought,120,150,"italic 12px Georgia");
+  textWithShadow(progress.count+" / "+goalCount+" eggs",120,171,"10px system-ui",.87);
+  textWithShadow("Jump to replay",120,188,"9px system-ui",.82);
  }else if(sceneTitle.t>0){
   const opacity=clamp(sceneTitle.t/.67,0,1);
   textWithShadow(sceneTitle.title,VIEW_W/2,51,sceneTitle.title==="Limbo"?"29px Georgia":"18px Georgia",opacity);
   textWithShadow(sceneTitle.sub,VIEW_W/2,67,"10px Georgia",opacity*.85);
  }
+}
+const touchInput=window.matchMedia("(pointer: coarse)");
+function drawInteractionPrompt(){
+ const target=nearbyInteraction(),label=target?.label??"";
+ if(label!==lastPrompt){
+  lastPrompt=label;
+  $("interaction-status").textContent=label?label+" ("+(touchInput.matches?"Use":"E")+")":"";
+  $("touch-use").disabled=!target&&!conversation;
+ }
+ if(!target)return;
+ const text=(touchInput.matches?"":"E  ·  ")+label;
+ ctx.save();ctx.font="600 8.5px system-ui, sans-serif";
+ const width=ctx.measureText(text).width+12;
+ const x=clamp(target.x-frameView.x,width/2+4,VIEW_W-width/2-4);
+ const y=clamp(target.promptY-frameView.y,78,VIEW_H-16);
+ ctx.beginPath();ctx.roundRect(x-width/2,y-6.5,width,15,4);
+ ctx.fillStyle="#252b32ed";ctx.fill();ctx.lineWidth=.6;ctx.strokeStyle="#dab784a8";ctx.stroke();
+ ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle="#fff0cf";
+ ctx.fillText(text,x,y+1);
+ ctx.restore();
 }
 function draw(alpha){
  frameView={x:mix(previous.cameraX,cam.x,alpha),y:mix(previous.cameraY,cam.y,alpha),t:Math.max(0,now-(1-alpha)*DT)};
@@ -1033,32 +1118,41 @@ function draw(alpha){
  scenery();ctx.save();ctx.translate(-frameView.x,-frameView.y);
  liftShaft(true);statuesInMist();caveChamber();
  for(const args of groves)willow(...args);
- nobleCastle();endArch();terrain();streamDraw();liftShaft(false);
+ nobleCastle();endArch();springPlants();terrain();streamDraw();liftShaft(false);
  for(const args of ferns)littleFern(...args);
- poets();meadowGathering();leverAndGate();springPlants();
+ poets();meadowGathering();leverAndGate();
  for(const [x,y] of stage.checkpoints){
   if(!visible(x,y,34))continue;
   const lit=checkpoint[0]===x&&checkpoint[1]===y;
   glow(x,y,lit?18:12,"#fcdaa5",lit?.48:.21);
   strokeCheckpoint(x,y,lit);
  }
- waymarks();drawEggs();drawParticles();mist();drawBall(alpha);ctx.restore();
+ waymarks();drawEggs();drawParticles();drawBall(alpha);ctx.restore();
  const vignette=ctx.createRadialGradient(VIEW_W*.51,VIEW_H*.43,VIEW_W*.26,VIEW_W*.52,VIEW_H*.43,VIEW_H*.61);
  vignette.addColorStop(0,"#28323c00");vignette.addColorStop(1,"#2d26364e");fillRect(0,0,VIEW_W,VIEW_H,vignette);
  if(bloom>0)fillRect(0,0,VIEW_W,VIEW_H,rgba("#fff2ca",bloom*.09));
- hud();
+ hud();drawInteractionPrompt();
 }
 function strokeCheckpoint(x,y,lit){
  line([[x,y-8],[x,y+24]],"#817464",1.45);
  outline([[x,y-8],[x+4,y-2],[x+2,y+4],[x-3,y+4],[x-4,y-2]],lit?"#f4dfa9":"#b5aa88","#e4c7a283",.7);
 }
-const controlKeys=new Set(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","KeyA","KeyD","KeyW","KeyR","Enter"]);
+const controlKeys=new Set(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","KeyA","KeyD","KeyW","KeyR","Enter","KeyE","Escape"]);
 window.addEventListener("keydown",event=>{
  if(!controlKeys.has(event.code)||event.altKey||event.ctrlKey||event.metaKey)return;
  if(event.target.tagName==="BUTTON"&&(event.code==="Space"||event.code==="Enter"))return;
+ if(event.code==="Escape"&&!conversation)return;
  event.preventDefault();wakeAudio();
  if(!event.repeat&&(event.code==="KeyR"||phase==="clear"&&(event.code==="Space"||event.code==="Enter"))){
   keys.clear();reset();return;
+ }
+ if(event.code==="KeyE"){
+  if(!event.repeat)useNearby();
+  return;
+ }
+ if(conversation){
+  if(event.code==="Escape")closeConversation(false);
+  return;
  }
  keys.add(event.code);
 });
@@ -1068,14 +1162,18 @@ document.addEventListener("visibilitychange",()=>{if(document.hidden)keys.clear(
 for(const control of document.querySelectorAll("[data-key]")){
  const key=control.dataset.key;
  control.addEventListener("pointerdown",event=>{
-  event.preventDefault();wakeAudio();control.setPointerCapture(event.pointerId);
+  event.preventDefault();
+  if(conversation)return;
+  wakeAudio();control.setPointerCapture(event.pointerId);
   if(phase==="clear"&&key==="Space"){keys.clear();reset();return;}
   keys.add(key);
  });
  for(const event of ["pointerup","pointercancel","lostpointercapture"])control.addEventListener(event,()=>keys.delete(key));
 }
+$("touch-use").addEventListener("click",()=>{wakeAudio();useNearby();});
+$("advance").addEventListener("click",advanceConversation);
 $("restart").addEventListener("click",()=>{keys.clear();reset();canvas.focus();});
-canvas.addEventListener("pointerdown",()=>{canvas.focus();wakeAudio();});
+canvas.addEventListener("pointerdown",()=>{if(!conversation)canvas.focus();wakeAudio();});
 let previousTime=0,carry=0;
 function frame(ms){
  if(previousTime)carry+=Math.min(.05,(ms-previousTime)/1000);
@@ -1084,5 +1182,4 @@ function frame(ms){
  draw(carry/DT);requestAnimationFrame(frame);
 }
 reset();
-$("location").textContent="I · Limbo";
 requestAnimationFrame(frame);
