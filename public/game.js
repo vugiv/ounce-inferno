@@ -44,7 +44,8 @@ const ballPalettes={
  murky:{filter:"grayscale(1) brightness(.66) contrast(1.14) sepia(.24) hue-rotate(145deg)",body:["#727b90","#424a5b","#272c39","#121723"],edge:"#141823"}
 };
 const ballPalette=ballPalettes[stage.ballPalette];
-const guide={kind:"poet",id:"virgil",label:"Talk to Virgil",height:stage.virgil.height,lines:stage.virgil.lines};
+const guide={kind:"guide",label:"Talk to Virgil",height:stage.virgil.height};
+const course=stage.challenge;
 function polygonEdges(points) {
  return points.map(([ax,ay],i)=>{
   const [bx,by]=points[(i+1)%points.length];
@@ -72,6 +73,8 @@ function surfaceY(shape,x){
  return shape.points[shape.rim-1][1];
 }
 const useTargets=[
+ {kind:"course",x:stage.exit[0],y:stage.exit[1],promptY:stage.exit[1]-54,
+  label:"Read the passage",range:37,lines:[["Passage",course.hint]]},
  ...stage.poets.filter(poet=>poet.lines.length).map(poet=>({
   kind:"poet",id:poet.id??poet.name,x:poet.x,y:poet.y-R,promptY:poet.y-poet.height-9,
   label:poet.label??"Talk to "+poet.name,range:43,lines:poet.lines
@@ -97,7 +100,7 @@ if(roseMemory){
   lines:[["Memory","A place was left for you beside the poets. The warmth of that place returns here."]]});
 }
 let ball,cam,eggs,fx,progress,cave,phase,now,sceneTitle,checkpoint,stepsOnWater,pop,spring,bloom,previous,departure,lift;
-let conversation=null,lastPrompt="",virgil;
+let conversation=null,lastPrompt="",virgil,trial,guideQueue,guideMilestones;
 let sound, hasThunder=false;
 function newBall([x,y]){
  return {x,y,vx:0,vy:0,ground:false,normalX:0,normalY:-1,rotation:0,spin:0,face:1,squash:0,elasticVel:0,tilt:0,spring:null,riding:false,onFoothold:null,dropThrough:null,dropHeld:false};
@@ -116,6 +119,9 @@ function reset(){
  spring={bend:0,x:0,y:0};
  sceneTitle={title:chapterTitle,sub:inLust?"Canto V":"Canto IV",t:2.55};
  checkpoint=stage.start;stepsOnWater=0;
+ trial={started:false,cleared:false,hit:0};
+ guideQueue=[{id:"arrival",lines:stage.virgil.lines}];
+ guideMilestones=new Set();
  lift=stage.lift?{y:stage.lift.bottom,last:stage.lift.bottom}:null;
  if(conversation)closeConversation(false);
  $("location").textContent=circleLabel;
@@ -349,7 +355,7 @@ function gather(){
  for(const item of eggs){
   if(item.taken||(item.kind==="secret"&&!cave.entered)||distance(ball.x,ball.y,item.x,item.y)>33)continue;
   item.taken=true;item.pickup=now+.00001;
-  progress.count++;pop=1;
+  progress.count++;pop=1;guideBeat("egg");
   emit("star",item.x,item.y,item.kind==="secret"?"#c4f2d1":"#ffdc80",8,94,now*79+item.id);
   emit("flake",item.x,item.y,"#fff1bb",4,48,now*99+item.id);
   const notes=[514,579,650,728,815];
@@ -357,11 +363,20 @@ function gather(){
   chime(n,n*.98,.118,.036);chime(n*1.50,n*1.5,.22,.015,"sine",.035);
  }
  if(!progress.rose&&cave.entered&&cave.relief&&distance(ball.x,ball.y,...stage.cave.rose)<35){
-  progress.rose=true;pop=1;bloom=1;
+  progress.rose=true;pop=1;bloom=1;guideBeat("rose");
   emit("star",...stage.cave.rose,"#ffb6c2",14,93);
   chime(438,554,.45,.037);chime(660,887,.55,.021,"sine",.055);
   sceneTitle={title:"Six among the poets",sub:"",t:2.4};
  }
+}
+function guideBeat(id){
+ const lines=stage.virgil.beats[id];
+ if(!lines||guideMilestones.has(id))return;
+ guideMilestones.add(id);
+ guideQueue.push({id,lines});
+}
+function storyReady(){
+ return inLust?progress.poets.has("francesca"):progress.gate===1;
 }
 function placeVirgil(){
  virgil={x:clamp(ball.x-48,21,stage.width-21),y:ball.y-24,side:-1};
@@ -382,15 +397,16 @@ function nearbyInteraction(){
   if(kind==="lever"&&progress.marks.has(id))continue;
   if(kind==="relief"&&(!cave.entered||cave.relief))continue;
   if(kind==="gate"&&progress.marks.size===stage.switches.length)continue;
-  if(kind==="exit"&&!(inLust?progress.poets.has("francesca"):progress.gate===1))continue;
-  if(kind==="threshold"&&progress.poets.has("francesca"))continue;
+  if(kind==="exit"&&!(storyReady()&&trial.cleared))continue;
+  if(kind==="course"&&(!storyReady()||trial.cleared))continue;
+  if(kind==="threshold"&&storyReady())continue;
   const d=distance(ball.x,ball.y,x,y);
   if(Math.abs(ball.y-y)>33||d>range||d>=nearest)continue;
   target=candidate;nearest=d;
  }
  if(target)return target;
- if(distance(ball.x,ball.y,virgil.x,virgil.y)>83)return null;
- return {...guide,x:virgil.x,y:virgil.y,promptY:virgil.y-guide.height-6};
+ if(!guideQueue.length||distance(ball.x,ball.y,virgil.x,virgil.y)>83)return null;
+ return {...guide,...guideQueue[0],x:virgil.x,y:virgil.y,promptY:virgil.y-guide.height-6};
 }
 function showConversationLine(){
  const [speaker,text]=conversation.lines[conversation.index];
@@ -413,9 +429,13 @@ function closeConversation(finished){
  conversation=null;
  $("conversation").hidden=true;
  keys.clear();
- if(finished&&target.kind==="poet")progress.poets.add(target.id);
+ if(finished&&target.kind==="guide")guideQueue.shift();
+ if(finished&&target.kind==="poet"){
+  progress.poets.add(target.id);guideBeat(target.id);
+ }
+ if(finished&&target.kind==="memory")guideBeat("memory");
  if(finished&&target.kind==="relief"){
-  cave.relief=1;
+  cave.relief=1;guideBeat("relief");
   const [x,y]=stage.cave.relief;
   emit("star",x+52,y-26,"#f2c4a4",8,52);
   chime(294,392,.36,.024);chime(440,523,.41,.018,"sine",.08);
@@ -440,7 +460,7 @@ function useNearby(){
  if(target.lines){
   openConversation(target,target.lines);
  }else if(target.kind==="lever"){
-  progress.marks.set(target.id,now);
+  progress.marks.set(target.id,now);guideBeat(target.id);
   emit("star",target.x,target.y,"#e4efb2",8,65);
   chime(175,260,.28,.043,"triangle");
   if(progress.marks.size===stage.switches.length)chime(311,391,.37,.037,"sine",.14);
@@ -482,19 +502,47 @@ function worldEvents(dt){
  const zone=stage.zones.find(area=>s.x>=area.x&&s.x<=area.x+area.w&&s.y>=area.y&&s.y<=area.y+area.h);
  if(zone&&!progress.visited.has(zone.id)){
   progress.visited.add(zone.id);
+  if(zone.id==="doves")guideBeat("shelter");
   sceneTitle={title:zone.title,sub:"",t:2.06};
  }
- if(s.y>stage.height+30)respawn();
+ if(s.y>stage.height+30){if(conversation)closeConversation(false);respawn();}
+}
+const PULSE_CYCLE=3.8;
+function pulse(offset,t){
+ const age=(t+offset)%PULSE_CYCLE;
+ if(age<.72)return "warning";
+ if(age<1.44)return "active";
+ return "quiet";
+}
+function checkCourse(){
+ if(trial.cleared)return;
+ const s=ball;
+ if(!trial.started&&s.ground&&s.y>=course.yMin&&s.y<=course.yMax&&Math.abs(s.x-course.checkpoint[0])<=35&&s.x<=course.entry){
+  trial.started=true;checkpoint=course.checkpoint;guideBeat("trial-start");
+ }
+ for(const [x,y,width,height,timing] of course.hazards){
+  if(pulse(timing,now)!=="active"||Math.abs(s.x-x)>width+R*.72||s.y+R*.82<y-height||s.y-R>=y)continue;
+  if(conversation)closeConversation(false);
+  respawn();trial.hit=.48;
+  emit("dust",ball.x,ball.y,"#dfa89a",9,68);
+  chime(148,49,.32,.07,"triangle");
+  return;
+ }
+ if(trial.started&&s.ground&&s.x>=course.finish&&s.y>=course.yMin&&s.y<=course.yMax){
+  trial.cleared=true;guideBeat("trial-clear");
+  emit("star",s.x,s.y,"#e7d4a6",10,79);
+  chime(301,468,.35,.038);
+ }
 }
 function tick(dt){
  remember();
- if(conversation)return;
  now+=dt;
  if(phase==="play"){
   moveLift();
   if(ball.spring)animateSpring(dt);
   else simulateBall(dt);
   worldEvents(dt);
+  checkCourse();
   followVirgil(dt);
  }else if(phase==="exit"){
   departure.t=Math.min(1,departure.t+dt/.72);
@@ -512,7 +560,7 @@ function tick(dt){
  }
  updateCamera(dt);
  sceneTitle.t=Math.max(0,sceneTitle.t-dt);
- pop=Math.max(0,pop-dt*3.8);bloom=Math.max(0,bloom-dt*1.6);
+ pop=Math.max(0,pop-dt*3.8);bloom=Math.max(0,bloom-dt*1.6);trial.hit=Math.max(0,trial.hit-dt);
  for(const part of fx){
   part.time+=dt;
   part.x+=part.vx*dt;part.y+=part.vy*dt;
@@ -1237,7 +1285,7 @@ function lustLandmarks(){
 const touchInput=window.matchMedia("(pointer: coarse)");
 function drawInteractionPrompt(){
  const interaction=nearbyInteraction();
- const target=interaction===null||interaction.id==="virgil"&&Math.abs(ball.vx)>60?null:interaction;
+ const target=interaction===null||interaction.kind==="guide"&&Math.abs(ball.vx)>60?null:interaction;
  const label=target?.label??"";
  if(label!==lastPrompt){
   lastPrompt=label;
@@ -1256,6 +1304,25 @@ function drawInteractionPrompt(){
  ctx.fillText(text,x,y+1);
  ctx.restore();
 }
+function drawCourse(){
+ for(const [x,y,width,height,timing] of course.hazards){
+  if(!visible(x,y-height/2,61))continue;
+  const state=trial.cleared?"quiet":pulse(timing,frameView.t);
+  const wind=course.style==="wind";
+  const color=wind?"#e0e5f8":"#e8ad84";
+  const hot=state==="active";
+  const rim=wind?"#918db5":"#514151";
+  line([[x-width,y-3],[x-width/2,y-6],[x-3,y-2],[x+3,y-7],[x+width*.55,y-4],[x+width,y-6]],state==="quiet"?rim:color,hot?2.7:1.35);
+  if(state==="quiet")continue;
+  glow(x,y-height*.33,33,color,hot?.62:.23);
+  for(let i=0;i<10;i++){
+   const t=(frameView.t*(hot?2.4:1.35)+i*.131)%1;
+   const px=x+(random(i*3+x)-.5)*width*2,py=y-t*(hot?height:height*.44);
+   if(wind)line([[px-7,py+5],[px,py],[px+10,py-4]],rgba(color,(1-t)*(hot?.87:.44)),hot?1.75:1);
+   else ellipse(px,py,hot?2.25:1.5,hot?2.8:1.7,rgba(color,(1-t)*(hot?.87:.44)));
+  }
+ }
+}
 function draw(alpha){
  frameView={x:mix(previous.cameraX,cam.x,alpha),y:mix(previous.cameraY,cam.y,alpha),t:Math.max(0,now-(1-alpha)*DT)};
  ctx.setTransform(canvas.width/VIEW_W,0,0,canvas.height/VIEW_H,0,0);
@@ -1270,16 +1337,17 @@ function draw(alpha){
   for(const args of ferns)littleFern(...args);
   poets();meadowGathering();leverAndGate();waymarks();
  }
- for(const [x,y] of stage.checkpoints){
+ for(const [x,y] of [...stage.checkpoints,course.checkpoint]){
   if(!visible(x,y,34))continue;
   const lit=checkpoint[0]===x&&checkpoint[1]===y;
   glow(x,y,lit?18:12,"#fcdaa5",lit?.48:.21);
   strokeCheckpoint(x,y,lit);
  }
- drawEggs();drawParticles();flyingVirgil(alpha);drawBall(alpha);ctx.restore();
+ drawCourse();drawEggs();drawParticles();flyingVirgil(alpha);drawBall(alpha);ctx.restore();
  const vignette=ctx.createRadialGradient(VIEW_W*.51,VIEW_H*.43,VIEW_W*.26,VIEW_W*.52,VIEW_H*.43,VIEW_H*.61);
  vignette.addColorStop(0,"#28323c00");vignette.addColorStop(1,"#2d26364e");fillRect(0,0,VIEW_W,VIEW_H,vignette);
  if(bloom>0)fillRect(0,0,VIEW_W,VIEW_H,rgba("#fff2ca",bloom*.09));
+ if(trial.hit>0)fillRect(0,0,VIEW_W,VIEW_H,rgba("#943c55",trial.hit*.58));
  hud();drawInteractionPrompt();
 }
 function strokeCheckpoint(x,y,lit){

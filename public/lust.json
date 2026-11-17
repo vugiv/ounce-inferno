@@ -1,6 +1,7 @@
 {
   "ballPalette": "murky",
-  "virgil": {"height":41,"lines":[["Ball","Master, who are those people whom the black air punishes?"],["Virgil","Among them are Semiramis, Dido, Cleopatra, and Helen. The wind carries them without rest."],["Virgil","Below, look for two shades travelling together. When they draw nearer, call to them by the love that leads them."]]},
+  "virgil": {"height":41,"lines":[["Ball","Master, who are those people whom the black air punishes?"],["Virgil","Among them are Semiramis, Dido, Cleopatra, and Helen. The wind carries them without rest."],["Virgil","Below, look for two shades travelling together. When they draw nearer, call to them by the love that leads them."]],"beats":{"egg":[["Ball","I can still make out a little light through the wind."],["Virgil","Use the lights to judge where you can land."]],"minos":[["Ball","Minos warned us about the gate."],["Virgil","We may pass. Watch what the wind does to those below."]],"shelter":[["Ball","The wind is quieter here."],["Virgil","Call to the two shades when they draw near."]],"francesca":[["Ball","I heard her speak, and he only wept."],["Virgil","Come. Keep to the sheltered stone as long as you can."]],"memory":[["Ball","For a moment I remembered the warmth of Limbo."],["Virgil","What you saw there can travel with you."]],"trial-start":[["Virgil","Watch for the pale streaks. The blast follows after them."]],"trial-clear":[["Ball","The wind has let me through."],["Virgil","Take the passage below."]]}},
+  "challenge": {"name":"The crossing gale","entry":681,"finish":757,"yMin":868,"yMax":1021,"checkpoint":[648,1009],"style":"wind","hazards":[[718,1024,20,50,0.64]],"hint":"Return to the left side of the lower passage. Cross when the gale thins, or jump over its lowest sweep."},
   "title": "Lust",
   "width": 960,
   "height": 1150,
@@ -41,7 +42,7 @@
     [780,889],
     [915,997]
   ],
-  "checkpoints": [[474,248],[406,792],[775,1002]],
+  "checkpoints": [[474,248],[406,792]],
   "zones": [
     {"id":"threshold","x":0,"y":294,"w":960,"h":434,"title":"The unquiet wind"},
     {"id":"doves","x":64,"y":735,"w":643,"h":153,"title":"Francesca and Paolo"}

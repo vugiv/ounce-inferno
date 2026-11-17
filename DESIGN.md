@@ -23,7 +23,19 @@ Each circle is one explorable world. Routes can rise, descend, and loop back aro
 - Grounded controls stay consistent between circles. Wind in Lust acts on the airborne ball. Sheltered ground gives players time to stop, judge the next jump, and read.
 - Show the cause before a consequence. A pulled lever moves, an opened gate lifts, wind trails indicate the direction of the force, and small chevrons mark drop-through supports.
 - Eggs are optional and collected on contact. Use eggs to indicate possible trajectories and reward exploration. The chapter exit has an explicit interaction and uses story or world state to unlock.
-- Dialogue starts on stable ground and pauses the world. Give voices a line break when speakers change. Complete the exchange to register its story event. Escaping lets the player revisit it.
+- Dialogue starts from grounded play and suspends movement input. The camera, physics, lifts, ambient animation, and hazards keep running. A hit closes the exchange and returns the ball to its checkpoint. Complete an exchange to register its story event. Escaping lets the player return to unfinished dialogue.
+
+### Danger and progress
+
+A circle’s main obstacle should express its central image through movement. Give the player a visible warning and a foothold to try again. In the current build, a hit flashes the scene, interrupts a conversation, and returns the ball to its latest checkpoint. Eggs, opened mechanisms, and completed conversations stay earned. Passing the hazard from entrance to far side earns passage and settles it. The level exit also checks its existing story requirement.
+
+| Circle | Main obstacle and story connection | Passing condition |
+| --- | --- | --- |
+| I. Limbo | The broken castle causeway. Canto IV describes sorrow without bodily torment, so the game puts the danger in old stone made unstable by the sighing air. The shades remain peaceful. | Raise the portcullis, approach the checkpoint, and time jumps or rolls over the breaks when the dust settles. |
+| II. Lust | The crossing gale. Dante describes a hurricane that throws the shades against a precipice. Pale streaks signal the blast in the lower passage. | Hear Francesca, then cross the lower gale from its left approach. |
+| III–IX | Future trials follow the circles’ local imagery. Rain and mud can conceal footing, colliding weights can compress a path, and ice can make braking the final skill. | Define one readable success condition per circle before producing its art. |
+
+Virgil offers each exchange once per run. The arrival exchange and completed milestones queue in the order they happen. The first egg, a lever, an important encounter, a relic, or a major crossing can add a new exchange. Finish or skip through its lines to advance. Closing early leaves that exchange available. Nearby characters and usable objects take precedence.
 
 ### Platform and interaction palette
 
